@@ -1,4 +1,9 @@
-export type Category = 'seniori' | 'juniori' | 'kadeti' | 'pioniri'| 'predpioniri'
+export type Category =
+  // Muška vertikala
+  | 'seniori' | 'juniori' | 'kadeti' | 'pioniri' | 'predpioniri' | 'mini-muski'
+  // Ženska vertikala
+  | 'seniorke' | 'juniorke' | 'kadetkinje' | 'pionirke' | 'predpionirke' | 'mini-zenske'
+
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed'
 
 export interface Team {
@@ -46,12 +51,30 @@ export interface Match {
   notes?: string
 }
 
-export const CATEGORIES: { value: Category; label: string }[] = [
-  { value: 'seniori',  label: 'Seniori'  },
-  { value: 'juniori',  label: 'Juniori'  },
-  { value: 'kadeti',   label: 'Kadeti'   },
-  { value: 'pioniri',  label: 'Pioniri'  },
-  { value: 'predpioniri',  label: 'PredPioniri'},
+export const CATEGORIES_MUSKI: { value: Category; label: string }[] = [
+  { value: 'seniori',     label: 'Seniori'      },
+  { value: 'juniori',     label: 'Juniori'      },
+  { value: 'kadeti',      label: 'Kadeti'       },
+  { value: 'pioniri',     label: 'Pioniri'      },
+  { value: 'predpioniri', label: 'Predpioniri'  },
+  { value: 'mini-muski',  label: 'Mini (muški)' },
 ]
 
-export const SEASONS = ['2025/2026','2026/2027','2027/2028','2028/2029','2029/2030',]
+export const CATEGORIES_ZENSKE: { value: Category; label: string }[] = [
+  { value: 'seniorke',     label: 'Seniorke'       },
+  { value: 'juniorke',     label: 'Juniorke'       },
+  { value: 'kadetkinje',   label: 'Kadetkinje'     },
+  { value: 'pionirke',     label: 'Pionirke'       },
+  { value: 'predpionirke', label: 'Predpionirke'   },
+  { value: 'mini-zenske',  label: 'Mini (ženski)'  },
+]
+
+// Sve kategorije zajedno (za admin forme, itd.)
+export const CATEGORIES = [...CATEGORIES_MUSKI, ...CATEGORIES_ZENSKE]
+
+// Helper: da li je kategorija ženska
+export function isZenska(cat: Category): boolean {
+  return CATEGORIES_ZENSKE.some(c => c.value === cat)
+}
+
+export const SEASONS = ['2025/2026','2026/2027','2027/2028','2028/2029','2029/2030']

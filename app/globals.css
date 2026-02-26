@@ -139,3 +139,9 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover,
 input[type="time"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* Ženska home team row */
+.tr-zenska-home td {
+  background: rgba(180, 60, 100, 0.1);
+  border-left: 3px solid #f472b6;
+}
