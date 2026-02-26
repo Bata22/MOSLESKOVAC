@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ChevronDown, Menu, X } from 'lucide-react'
 import { CATEGORIES_MUSKI, CATEGORIES_ZENSKE } from '@/lib/types'
+import Image from 'next/image'
 
 export default function Navbar() {
   const [mobileOpen,   setMobileOpen]   = useState(false)
@@ -63,8 +64,8 @@ export default function Navbar() {
 
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 rounded-full bg-[#f5c518] flex items-center justify-center font-display text-[#002d63] text-sm font-bold group-hover:scale-105 transition-transform">
-            MOSL
+          <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-display text-[#002d63] text-sm font-bold group-hover:scale-105 transition-transform">
+            <Image src="/mos.png"  alt='' width={40}  height={40}/>
           </div>
           <div>
             <div className="font-display text-[#f5c518] text-lg tracking-widest leading-none">Međuokružni odbojkaški savez</div>
