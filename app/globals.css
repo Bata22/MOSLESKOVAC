@@ -1,0 +1,141 @@
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Barlow', sans-serif;
+  background-color: #080e1c;
+  color: #e8eaf0;
+}
+
+/* scrollbar */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: #080e1c; }
+::-webkit-scrollbar-thumb { background: #003f8a; border-radius: 3px; }
+
+.glass {
+  background: rgba(0, 63, 138, 0.1);
+  border: 1px solid rgba(0, 63, 138, 0.3);
+  backdrop-filter: blur(10px);
+}
+
+.th-style {
+  background: linear-gradient(135deg, #002d63, #003f8a);
+  color: #f5c518;
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.08em;
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 0.82rem;
+}
+
+.tr-hover:hover td {
+  background: rgba(0, 63, 138, 0.18);
+}
+
+.tr-vranje td {
+  background: rgba(245, 197, 24, 0.06);
+  border-left: 3px solid #f5c518;
+}
+
+.field-input {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(0,63,138,0.5);
+  border-radius: 8px;
+  color: #e8eaf0;
+  padding: 10px 14px;
+  width: 100%;
+  font-size: 0.9rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.field-input:focus {
+  outline: none;
+  border-color: #f5c518;
+  box-shadow: 0 0 0 3px rgba(245,197,24,0.12);
+}
+.field-input option { background: #0a1020; }
+
+.nav-drop {
+  animation: dropIn 0.15s ease;
+}
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.card-hover {
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(245,197,24,0.12);
+}
+
+.live-pulse { animation: livePulse 1.4s ease-in-out infinite; }
+@keyframes livePulse {
+  0%,100% { opacity: 1; }
+  50%      { opacity: 0.4; }
+}
+
+.btn-yellow {
+  background: #f5c518;
+  color: #002d63;
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.08em;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-yellow:hover { background: #ffd740; }
+.btn-yellow:disabled { opacity: 0.55; cursor: not-allowed; }
+
+.btn-ghost {
+  background: rgba(0,63,138,0.15);
+  border: 1px solid rgba(0,63,138,0.4);
+  color: #93a8c8;
+  padding: 10px 18px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-ghost:hover { color: #fff; background: rgba(0,63,138,0.3); }
+
+.label {
+  display: block;
+  font-size: 0.72rem;
+  color: #7b96bc;
+  font-weight: 600;
+  margin-bottom: 5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Svetle ikonice za date/time inpute */
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
+}
+
+/* Ikonica kalendara i sata — zlatna boja */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+  filter: invert(80%) sepia(60%) saturate(400%) hue-rotate(5deg) brightness(1.3);
+  cursor: pointer;
+  opacity: 0.9;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
