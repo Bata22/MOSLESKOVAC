@@ -49,7 +49,9 @@ export default function StandingsTable({ standings }: { standings: Standing[] })
                              row.team?.name?.toLowerCase().includes('mosl')
               return (
                 <tr key={row.id} className={`border-b border-white/5 tr-hover ${isHome ? (zenski ? 'tr-zenska-home' : 'tr-vranje') : ''}`}>
-                  <td className="px-4 py-3 text-center text-lg">{medal(row.position || i + 1)}</td>
+                  <td className="px-4 py-3 text-center text-lg">{ //medal
+                  (row.position || i + 1)}</td>
+                
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center font-display text-xs ${zenski ? 'bg-pink-900/50 border border-pink-700 text-pink-300' : 'bg-[#003f8a]/60 border border-[#003f8a] text-[#f5c518]'}`}>
