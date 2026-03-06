@@ -46,7 +46,7 @@ export default function Navbar() {
         ))}
         {/* Ženska sekcija */}
         <div className="px-4 pt-2 pb-1 border-t border-white/10">
-          <p className="text-[10px] text-pink-300 tracking-widest font-bold uppercase mb-1">  Žene</p>
+          <p className="text-[10px] text-pink-300 tracking-widest font-bold uppercase mb-1">Žene</p>
         </div>
         {CATEGORIES_ZENSKE.map(c => (
           <Link key={c.value} href={`${base}?kategorija=${c.value}`} onClick={close}
@@ -65,7 +65,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 group">
           <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-display text-[#002d63] text-sm font-bold group-hover:scale-105 transition-transform">
-            <Image src="/mos.png"  alt='' width={40}  height={40}/>
+            <Image src="/mos.png" alt='MOSL' width={40} height={40}  />
           </div>
           <div>
             <div className="font-display text-[#f5c518] text-lg tracking-widest leading-none">Međuokružni odbojkaški savez</div>
@@ -99,6 +99,12 @@ export default function Navbar() {
             </button>
             {utakmiceOpen && <DropdownContent base="/utakmice" close={() => setUtakmiceOpen(false)} />}
           </div>
+
+          {/* MOS INFO */}
+          <Link href="/mos-info"
+            className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/mos-info') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
+            MOS INFO
+          </Link>
         </div>
 
         {/* Mobile toggle */}
@@ -111,6 +117,8 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="md:hidden bg-[#002d63] border-t border-[#f5c518]/20 px-4 py-4 space-y-1 max-h-[80vh] overflow-y-auto">
           <Link href="/" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Početna</Link>
+
+          <Link href="/mos-info" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">MOS Info</Link>
 
           {/* Mobile Timovi */}
           <div className="py-2 border-b border-white/10">
