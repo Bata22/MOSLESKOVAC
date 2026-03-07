@@ -49,7 +49,7 @@ export default function Home() {
       <section className="max-w-7xl mx-auto px-4 py-16">
         <h2 className="font-display text-3xl text-[#f5c518] tracking-widest mb-8 text-center">KATEGORIJE</h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="grid grid-cols-2 md:grid-cols-2 gap-8">
 
           {/* Muška kolona */}
           <div>
