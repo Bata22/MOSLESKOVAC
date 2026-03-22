@@ -140,12 +140,12 @@ export default function Navbar() {
           <div className="py-2">
             <p className="text-[#f5c518] font-display tracking-widest text-xs mb-2">UTAKMICE</p>
             <Link href="/utakmice" onClick={() => setMobileOpen(false)} className="block py-2 pl-3 text-blue-300 hover:text-[#f5c518] text-sm">Sve kategorije</Link>
-            <p className="pl-3 pt-2 text-[10px] text-blue-400 tracking-widest">MUŠKA VERTIKALA</p>
+            <p className="pl-3 pt-2 text-[10px] text-blue-400 tracking-widest">MUŠKARCI</p>
             {CATEGORIES_MUSKI.map(c => (
               <Link key={c.value} href={`/utakmice?kategorija=${c.value}`} onClick={() => setMobileOpen(false)}
                 className="block py-2 pl-4 text-blue-100 hover:text-[#f5c518] text-sm">{c.label}</Link>
             ))}
-            <p className="pl-3 pt-2 text-[10px] text-pink-300 tracking-widest">ŽENSKA VERTIKALA</p>
+            <p className="pl-3 pt-2 text-[10px] text-pink-300 tracking-widest">ŽENE</p>
             {CATEGORIES_ZENSKE.map(c => (
               <Link key={c.value} href={`/utakmice?kategorija=${c.value}`} onClick={() => setMobileOpen(false)}
                 className="block py-2 pl-4 text-pink-200 hover:text-pink-400 text-sm">{c.label}</Link>
