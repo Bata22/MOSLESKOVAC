@@ -91,16 +91,21 @@ export default function MatchCard({ match }: { match: Match }) {
           </div>
         </div>
 
-        {/* venue / round */}
-        {(match.venue || match.round) && (
-          <div className="mt-3 flex justify-center gap-4 text-xs text-blue-300">
+        {/* venue / round / redni broj */}
+        {(match.venue || match.round || match.redni_broj) && (
+          <div className="mt-3 flex justify-center flex-wrap gap-2 text-xs text-blue-300">
             {match.venue && (
               <span className="flex items-center gap-1">
                 <MapPin className="w-3.5 h-3.5" style={{color:"#f5c518"}} />{match.venue}
               </span>
             )}
+            {match.redni_broj && (
+              <span className="bg-[#f5c518]/10 border border-[#f5c518]/20 text-[#f5c518] px-2 py-0.5 rounded font-semibold">
+                #{match.redni_broj}
+              </span>
+            )}
             {match.round && (
-              <span className="bg-[#003f8a]/30 px-2 py-0.5 rounded">{match.round}. kolo</span>
+              <span className="bg-[#003f8a]/30 px-2 py-0.5 rounded">Kolo {match.round}</span>
             )}
           </div>
         )}

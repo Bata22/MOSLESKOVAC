@@ -48,6 +48,7 @@ export interface Match {
   away_sets?: number
   status: MatchStatus
   round?: string
+  redni_broj?: string
   notes?: string
 }
 

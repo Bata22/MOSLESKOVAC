@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import { Trophy, ChevronRight, Info, FileText } from 'lucide-react'
+import { Trophy, ChevronRight, Info, FileText, Building2 } from 'lucide-react'
 import { CATEGORIES_MUSKI, CATEGORIES_ZENSKE } from '@/lib/types'
 
 // ✏️ PROMENITI OVDE link za dokumentaciju
@@ -37,8 +37,12 @@ export default function Home() {
             <Link href="/mos-info" className="btn-yellow text-lg">
               <Info className="w-5 h-5" /> MOS INFO <ChevronRight className="w-4 h-4" />
             </Link>
-            <a href={DOKUMENTACIJA_URL} target="_blank" rel="noopener noreferrer"
+            <Link href="/klubovi"
               className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-[#f5c518]/10 transition-colors flex items-center gap-2">
+              <Building2 className="w-5 h-5" /> KLUBOVI
+            </Link>
+            <a href={DOKUMENTACIJA_URL} target="_blank" rel="noopener noreferrer"
+              className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
               <FileText className="w-5 h-5" /> DOKUMENTACIJA
             </a>
           </div>

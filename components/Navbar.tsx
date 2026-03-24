@@ -105,6 +105,12 @@ export default function Navbar() {
             className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/mos-info') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
             MOS INFO
           </Link>
+
+          {/* KLUBOVI */}
+          <Link href="/klubovi"
+            className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/klubovi') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
+            KLUBOVI
+          </Link>
         </div>
 
         {/* Mobile toggle */}
@@ -119,6 +125,7 @@ export default function Navbar() {
           <Link href="/" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Početna</Link>
 
           <Link href="/mos-info" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">MOS Info</Link>
+          <Link href="/klubovi" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Klubovi</Link>
 
           {/* Mobile Timovi */}
           <div className="py-2 border-b border-white/10">
