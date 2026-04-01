@@ -29,7 +29,7 @@ okvranje-full/
 └── package.json
 ```
 
-## POKRETANJE (korak po korak)
+## POKRETANJE (korak po korak) :
 
 ### 1. Instaliraj Node.js
 Preuzmi sa: https://nodejs.org (LTS verzija)
