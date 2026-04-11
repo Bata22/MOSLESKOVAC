@@ -26,7 +26,6 @@ export default function Navbar() {
 
   const isActive = (path: string) => pathname.startsWith(path)
 
-  // Dropdown sa podeljenim muškim/ženskim sekcijama
   function DropdownContent({ base, close }: { base: string; close: () => void }) {
     return (
       <div className="nav-drop absolute top-full left-0 mt-1 w-52 bg-[#002d63] border border-[#f5c518]/30 rounded-xl shadow-2xl overflow-hidden">
@@ -34,9 +33,8 @@ export default function Navbar() {
           className="block px-4 py-2.5 text-xs text-blue-300 hover:bg-white/10 font-semibold tracking-wider border-b border-white/10">
           SVE KATEGORIJE
         </Link>
-        {/* Muška sekcija */}
         <div className="px-4 pt-2 pb-1">
-          <p className="text-[10px] text-blue-400 tracking-widest font-bold uppercase mb-1"> Muškarci</p>
+          <p className="text-[10px] text-blue-400 tracking-widest font-bold uppercase mb-1">Muškarci</p>
         </div>
         {CATEGORIES_MUSKI.map(c => (
           <Link key={c.value} href={`${base}?kategorija=${c.value}`} onClick={close}
@@ -44,7 +42,6 @@ export default function Navbar() {
             {c.label}
           </Link>
         ))}
-        {/* Ženska sekcija */}
         <div className="px-4 pt-2 pb-1 border-t border-white/10">
           <p className="text-[10px] text-pink-300 tracking-widest font-bold uppercase mb-1">Žene</p>
         </div>
@@ -58,6 +55,13 @@ export default function Navbar() {
     )
   }
 
+  const navLink = (href: string, label: string) => (
+    <Link key={href} href={href}
+      className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors whitespace-nowrap ${isActive(href) ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
+      {label}
+    </Link>
+  )
+
   return (
     <nav className="sticky top-0 z-50 bg-[#002d63] border-b-2 border-[#f5c518] shadow-xl">
       <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -65,7 +69,7 @@ export default function Navbar() {
         {/* Logo */}
         <Link href="/" className="flex items-center gap-3 group">
           <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center font-display text-[#002d63] text-sm font-bold group-hover:scale-105 transition-transform">
-            <Image src="/mos.png" alt='MOSL' width={40} height={40}  />
+            <Image src="/mos.png" alt='MOSL' width={40} height={40} />
           </div>
           <div>
             <div className="font-display text-[#f5c518] text-lg tracking-widest leading-none">Međuokružni odbojkaški savez</div>
@@ -74,7 +78,7 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-1">
+        <div className="hidden md:flex items-center gap-1 overflow-x-auto">
           <Link href="/"
             className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${pathname === '/' ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
             POČETNA
@@ -100,17 +104,11 @@ export default function Navbar() {
             {utakmiceOpen && <DropdownContent base="/utakmice" close={() => setUtakmiceOpen(false)} />}
           </div>
 
-          {/* MOS INFO */}
-          <Link href="/mos-info"
-            className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/mos-info') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
-            MOS INFO
-          </Link>
-
-          {/* KLUBOVI */}
-          <Link href="/klubovi"
-            className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/klubovi') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
-            KLUBOVI
-          </Link>
+          {navLink('/mos-info', 'MOS INFO')}
+          {navLink('/klubovi',  'KLUBOVI')}
+          {navLink('/treneri',  'TRENERI')}
+          {navLink('/sudije',   'SUDIJE')}
+          {navLink('/bilteni',  'BILTENI')}
         </div>
 
         {/* Mobile toggle */}
@@ -123,9 +121,11 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="md:hidden bg-[#002d63] border-t border-[#f5c518]/20 px-4 py-4 space-y-1 max-h-[80vh] overflow-y-auto">
           <Link href="/" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Početna</Link>
-
           <Link href="/mos-info" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">MOS Info</Link>
-          <Link href="/klubovi" onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Klubovi</Link>
+          <Link href="/klubovi"  onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Klubovi</Link>
+          <Link href="/treneri"  onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Treneri</Link>
+          <Link href="/sudije"   onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Sudije</Link>
+          <Link href="/bilteni"  onClick={() => setMobileOpen(false)} className="block py-3 text-blue-100 font-semibold border-b border-white/10">Bilteni</Link>
 
           {/* Mobile Timovi */}
           <div className="py-2 border-b border-white/10">

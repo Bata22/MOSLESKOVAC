@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import Navbar from '@/components/Navbar'
-import { Trophy, ChevronRight, Info, FileText, Building2 } from 'lucide-react'
+import { Trophy, ChevronRight, Info, FileText, Building2, Scale } from 'lucide-react'
 import { CATEGORIES_MUSKI, CATEGORIES_ZENSKE } from '@/lib/types'
 
 // ✏️ PROMENITI OVDE link za dokumentaciju
@@ -45,6 +45,15 @@ export default function Home() {
               className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
               <FileText className="w-5 h-5" /> DOKUMENTACIJA
             </a>
+            <Link href="/treneri" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <Info className="w-5 h-5" /> TRENERI <ChevronRight className="w-4 h-4" />
+            </Link>
+            <Link href="/sudije" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <Scale className="w-5 h-5" /> SUDIJE <ChevronRight className="w-4 h-4" />
+            </Link>
+            <Link href="/bilteni" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <FileText className="w-5 h-5" /> BILTENI <ChevronRight className="w-4 h-4" />
+            </Link>
           </div>
         </div>
       </section>
