@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { CATEGORIES, SEASONS } from '@/lib/types'
-import { Plus, LogOut, Trophy, Calendar, Users, Trash2, Save, X, Edit2, Info, Building2 } from 'lucide-react'
+import { Plus, LogOut, Trophy, Calendar, Users, Trash2, Save, X, Edit2, Info, Building2, Scale, BookOpen, FileText } from 'lucide-react'
 
-type Tab = 'timovi' | 'tabela' | 'utakmice' | 'mosinfo' | 'klubovi'
+
+type Tab = 'timovi' | 'tabela' | 'utakmice' | 'mosinfo' | 'klubovi' | 'treneri' | 'sudije' | 'bilteni'
 
 export default function Dashboard() {
   const [tab,       setTab]       = useState<Tab>('timovi')
@@ -55,6 +56,9 @@ export default function Dashboard() {
     { id: 'utakmice', label: 'UTAKMICE', icon: Calendar  },
     { id: 'mosinfo',  label: 'MOS INFO', icon: Info      },
     { id: 'klubovi',  label: 'KLUBOVI',  icon: Building2 },
+    { id: 'treneri',  label: 'TRENERI',  icon: Users     },
+    { id: 'sudije',   label: 'SUDIJE',   icon: Scale     },
+    { id: 'bilteni',  label: 'BILTENI',  icon: BookOpen  },
   ]
 
   return (
@@ -89,7 +93,10 @@ export default function Dashboard() {
         {tab === 'tabela'   && <TabelaTab   standings={standings} teams={teams} supabase={supabase} onRefresh={reload} />}
         {tab === 'utakmice' && <UtakmiceTab matches={matches} teams={teams} supabase={supabase} onRefresh={reload} />}
         {tab === 'mosinfo'  && <MosInfoTab  supabase={supabase} />}
-        {tab === 'klubovi'  && <KluboviTab  supabase={supabase} />}
+        {tab === 'klubovi'  && <KluboviTab supabase={supabase} teams={teams} />}
+        {tab === 'treneri'  && <TreneriTab  supabase={supabase} />}
+        {tab === 'sudije'   && <SudijeTab   supabase={supabase} />}
+        {tab === 'bilteni'  && <BilteniTab  supabase={supabase} />}
       </div>
     </div>
   )
@@ -339,7 +346,7 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
   const blank = {
     home_team_id: '', away_team_id: '', category: 'seniori', season: SEASONS[0],
     match_date: '', match_time: '', venue: '', status: 'scheduled',
-    redni_broj: '', round: '', home_sets: '', away_sets: '', home_score: '', away_score: '', notes: ''
+    round: '', home_sets: '', away_sets: '', home_score: '', away_score: '', notes: ''
   }
   const [form, setForm] = useState(blank)
   const [dateDay, setDateDay]     = useState('')
@@ -372,7 +379,7 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
     ;['home_sets','away_sets','home_score','away_score'].forEach(k => {
       if (payload[k] === '') delete payload[k]; else payload[k] = parseInt(payload[k])
     })
-    ;['match_time','round','redni_broj','venue','notes'].forEach(k => { if (!payload[k]) delete payload[k] })
+    ;['match_time','round','venue','notes'].forEach(k => { if (!payload[k]) delete payload[k] })
     await supabase.from('matches').insert([payload])
     setForm(blank); setDateDay(''); setDateMonth(''); setDateYear(''); setTimeHour(''); setTimeMin('')
     setOpen(false); setBusy(false); onRefresh()
@@ -399,7 +406,6 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
       home_score: m.home_score ?? '', away_score: m.away_score ?? '',
       home_name: m.home_team?.name ?? 'Domaćin', away_name: m.away_team?.name ?? 'Gosti',
       match_date: m.match_date ?? '', match_time: m.match_time ?? '',
-      redni_broj: m.redni_broj ?? '', round: m.round ?? '',
     })
     // Popuni edit datum polja iz postojećeg datuma
     if (m.match_date) {
@@ -430,8 +436,6 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
       status:     editMatch.status,
       match_date: editMatch.match_date || null,
       match_time: editMatch.match_time || null,
-      redni_broj: editMatch.redni_broj || null,
-      round:      editMatch.round || null,
       home_sets:  editMatch.home_sets  !== '' ? parseInt(editMatch.home_sets)  : null,
       away_sets:  editMatch.away_sets  !== '' ? parseInt(editMatch.away_sets)  : null,
       home_score: editMatch.home_score !== '' ? parseInt(editMatch.home_score) : null,
@@ -518,12 +522,8 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
               </select>
             </div>
             <div>
-              <label className="label">Redni broj utakmice</label>
-              <input type="number" min="1" className="field-input" placeholder="pr. 5" value={form.redni_broj} onChange={e => setForm({...form, redni_broj: e.target.value})} />
-            </div>
-            <div>
-              <label className="label">Kolo</label>
-              <input type="number" className="field-input" placeholder="pr. 3" value={form.round} onChange={e => setForm({...form, round: e.target.value})} />
+              <label className="label">Redni broj utakmice / Kolo</label>
+              <input type="text" className="field-input" placeholder="pr. 5 ili Kolo 3" value={form.round} onChange={e => setForm({...form, round: e.target.value})} />
             </div>
             {showScore && <>
               <div><label className="label">Setovi — Domaćin</label><input type="number" min="0" max="3" className="field-input" value={form.home_sets} onChange={e => setForm({...form, home_sets: e.target.value})} /></div>
@@ -583,19 +583,7 @@ function UtakmiceTab({ matches, teams, supabase, onRefresh }: any) {
 
           {/* Izmena datuma i vremena */}
           <div className="border-t border-white/10 pt-4 mt-2">
-            <p className="text-xs text-blue-400 font-semibold tracking-wider uppercase mb-3">Izmeni datum, vreme i kolo</p>
-            <div className="grid sm:grid-cols-2 gap-4 mb-4">
-              <div>
-                <label className="label">Redni broj utakmice</label>
-                <input type="number" min="1" className="field-input" placeholder="pr. 5"
-                  value={editMatch.redni_broj} onChange={e => setEditMatch((m: any) => ({...m, redni_broj: e.target.value}))} />
-              </div>
-              <div>
-                <label className="label">Kolo</label>
-                <input type="text" className="field-input" placeholder="pr. Kolo 3"
-                  value={editMatch.round} onChange={e => setEditMatch((m: any) => ({...m, round: e.target.value}))} />
-              </div>
-            </div>
+            <p className="text-xs text-blue-400 font-semibold tracking-wider uppercase mb-3">Izmeni datum i vreme</p>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">Novi datum (DD / MM / YYYY)</label>
@@ -671,8 +659,8 @@ function MosInfoTab({ supabase }: any) {
   const [openForm,  setOpenForm]  = useState(false)
   const [upravaForm, setUpravaForm] = useState({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
   const [loaded,    setLoaded]    = useState(false)
-  const [editUpravaId,   setEditUpravaId]   = useState<string | null>(null)
-  const [editUpravaForm, setEditUpravaForm] = useState({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
+  const [editId,   setEditId]   = useState<string | null>(null)
+  const [editForm, setEditForm] = useState({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
 
   useEffect(() => {
     async function load() {
@@ -713,30 +701,34 @@ function MosInfoTab({ supabase }: any) {
     setUpravaForm({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
     setOpenForm(false); setBusy(false); reload()
   }
-  function startEditUprava(a: any) {
-  setEditUpravaId(a.id)
-  setEditUpravaForm({
-    pozicija:    a.pozicija    || '',
-    ime_prezime: a.ime_prezime || '',
-    telefon:     a.telefon     || '',
-    mail:        a.mail        || '',
-    redosled:    a.redosled    || 0,
-  })
-}
-
-async function saveEditUprava(e: React.FormEvent) {
-  e.preventDefault(); setBusy(true)
-  await supabase.from('mos_uprava').update(editUpravaForm).eq('id', editUpravaId)
-  setEditUpravaId(null)
-  setEditUpravaForm({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
-  const { data } = await supabase.from('mos_uprava').select('*').order('redosled')
-  setUprava(data ?? []); setBusy(false)
-}
 
   async function delUprava(id: string) {
     if (!confirm('Obrisati?')) return
     await supabase.from('mos_uprava').delete().eq('id', id); reload()
   }
+
+  function startEditAdminitstration(a: any) {
+  setEditId(a.id)
+  setEditForm({
+    pozicija:   a.pozicija || '',
+    ime_prezime: a.ime_prezime || '',
+    telefon:    a.telefon || '',
+    mail:       a.mail || '',
+    redosled:   a.redosled ?? 0
+  })
+  
+  setOpenForm(false)
+}
+
+async function saveEditAdminitstration(e: React.FormEvent) {
+  e.preventDefault()
+  setBusy(true)
+  await supabase.from('mos_uprava').update(editForm).eq('id', editId)
+  setEditId(null)
+  setEditForm({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
+  setBusy(false)
+  reload()
+}
 
   if (!loaded) return <div className="text-blue-400 text-center py-10 animate-pulse">Učitavanje...</div>
 
@@ -794,43 +786,22 @@ async function saveEditUprava(e: React.FormEvent) {
             </div>
           </form>
         )}
-        {editUpravaId && (
-  <form onSubmit={saveEditUprava} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
-    <h3 className="font-display text-lg text-white tracking-wider mb-4">UREDI ČLANA</h3>
-    <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-4">
-      <div>
-        <label className="label">Pozicija *</label>
-        <input className="field-input" value={editUpravaForm.pozicija}
-          onChange={e => setEditUpravaForm({...editUpravaForm, pozicija: e.target.value})} required />
-      </div>
-      <div>
-        <label className="label">Ime i prezime *</label>
-        <input className="field-input" value={editUpravaForm.ime_prezime}
-          onChange={e => setEditUpravaForm({...editUpravaForm, ime_prezime: e.target.value})} required />
-      </div>
-      <div>
-        <label className="label">Telefon</label>
-        <input className="field-input" value={editUpravaForm.telefon}
-          onChange={e => setEditUpravaForm({...editUpravaForm, telefon: e.target.value})} />
-      </div>
-      <div>
-        <label className="label">Mail</label>
-        <input type="email" className="field-input" value={editUpravaForm.mail}
-          onChange={e => setEditUpravaForm({...editUpravaForm, mail: e.target.value})} />
-      </div>
-    </div>
-    <div className="flex gap-2 mt-4">
-      <button type="submit" disabled={busy} className="btn-yellow">
-        <Save className="w-4 h-4" /> SAČUVAJ IZMENE
-      </button>
-      <button type="button"
-        onClick={() => setEditUpravaId(null)}
-        className="btn-ghost">
-        <X className="w-4 h-4" /> Odustani
-      </button>
-    </div>
-  </form>
-)}
+        {editId && (
+        <form onSubmit={saveEditAdminitstration} className="p-6 border-b border-white/10 bg-blue-950/20">
+            <h3 className="font-display text-lg text-white tracking-wider mb-4">UREDI ČLANA UPRAVE</h3>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div><label className="label">Pozicija *</label><input className="field-input" value={editForm.pozicija} onChange={e => setEditForm({...editForm, pozicija: e.target.value})} required /></div>
+                <div><label className="label">Ime i prezime *</label><input className="field-input" value={editForm.ime_prezime} onChange={e => setEditForm({...editForm, ime_prezime: e.target.value})} required /></div>
+                <div><label className="label">Broj telefona</label><input className="field-input" value={editForm.telefon} onChange={e => setEditForm({...editForm, telefon: e.target.value})} /></div>
+                <div><label className="label">Mail</label><input type="email" className="field-input" value={editForm.mail} onChange={e => setEditForm({...editForm, mail: e.target.value})} /></div>
+                <div><label className="label">Redosled prikaza</label><input type="number" className="field-input" value={editForm.redosled} onChange={e => setEditForm({...editForm, redosled: parseInt(e.target.value) || 0})} /></div>
+              </div>
+            <div className="flex gap-2 mt-4">
+              <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ IZMENE</button>
+              <button type="button" onClick={() => { setEditId(null); setEditForm({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 }) }} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+            </div>
+          </form>
+        )}
 
         <div className="divide-y divide-white/5">
           {uprava.length === 0 && <p className="px-6 py-8 text-center text-blue-500 text-sm">Nema unetih članova uprave.</p>} 
@@ -842,9 +813,7 @@ async function saveEditUprava(e: React.FormEvent) {
                 {u.telefon && <span className="text-blue-300 text-sm">{u.telefon}</span>}
                 {u.mail    && <span className="text-blue-300 text-sm">{u.mail}</span>}
               </div>
-              <button onClick={() => startEditUprava(u)} className="text-blue-400 hover:text-[#f5c518] p-1">
-                <Edit2 className="w-4 h-4" />
-              </button>
+               <button onClick={() => startEditAdminitstration(u)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
               <button onClick={() => delUprava(u.id)} className="text-red-400 hover:text-red-300 p-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
             </div>
           ))}
@@ -853,7 +822,6 @@ async function saveEditUprava(e: React.FormEvent) {
     </div>
   )
 }
-
 /* ══════════════════════════════════════════
    KLUBOVI TAB
 ══════════════════════════════════════════ */
@@ -1010,6 +978,345 @@ async function saveEdit(e: React.FormEvent) {
                   <button onClick={() => del(k.id)} className="text-red-400 hover:text-red-300 p-1">
                     <Trash2 className="w-4 h-4" />
                   </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+
+
+/* ══════════════════════════════════════════
+   TRENERI TAB
+══════════════════════════════════════════ */
+function TreneriTab({ supabase }: any) {
+  const [treneri,  setTreneri]  = useState<any[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [open,     setOpen]     = useState(false)
+  const [busy,     setBusy]     = useState(false)
+  const blank = { ime_prezime:'', broj_dozvole:'', klub:'', telefon:'', mail:'' }
+  const [form,     setForm]     = useState(blank)
+  const [editId,   setEditId]   = useState<string | null>(null)
+  const [editForm, setEditForm] = useState(blank)
+
+  async function fetchTreneri_() {
+    const { data } = await supabase.from('treneri').select('*').order('ime_prezime')
+    setTreneri(data ?? []); setLoading(false)
+  }
+  useEffect(() => { fetchTreneri_() }, [])
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true)
+    await supabase.from('treneri').insert([form])
+    setForm(blank); setOpen(false); setBusy(false); fetchTreneri_()
+  }
+  async function del(id: string) {
+    if (!confirm('Obrisati trenera?')) return
+    await supabase.from('treneri').delete().eq('id', id); fetchTreneri_()
+  }
+  function startEdit(t: any) {
+    setEditId(t.id)
+    setEditForm({ ime_prezime: t.ime_prezime||'', broj_dozvole: t.broj_dozvole||'', klub: t.klub||'', telefon: t.telefon||'', mail: t.mail||'' })
+    setOpen(false)
+  }
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true)
+    await supabase.from('treneri').update(editForm).eq('id', editId)
+    setEditId(null); setEditForm(blank); setBusy(false); fetchTreneri_()
+  }
+
+ 
+  if (loading) return <div className="text-blue-400 py-10 text-center animate-pulse">Učitavanje...</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-4xl text-white tracking-wider">TRENERI</h2>
+        <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+      </div>
+      {open && (
+        <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
+          <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI TRENER</h3>
+     
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div><label className="label">Ime i prezime *</label><input className="field-input" value={form.ime_prezime} onChange={e => setForm({...form, ime_prezime: e.target.value})} required /></div>
+            <div><label className="label">Broj dozvole</label><input className="field-input" value={form.broj_dozvole} onChange={e => setForm({...form, broj_dozvole: e.target.value})} /></div>
+            <div><label className="label">Klub</label><input className="field-input" value={form.klub} onChange={e => setForm({...form, klub: e.target.value})} /></div>
+            <div><label className="label">Telefon</label><input className="field-input" value={form.telefon} onChange={e => setForm({...form, telefon: e.target.value})} /></div>
+            <div><label className="label">Mail</label><input type="email" className="field-input" value={form.mail} onChange={e => setForm({...form, mail: e.target.value})} /></div>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ</button>
+            <button type="button" onClick={() => setOpen(false)} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+          </div>
+        </form>
+      )}
+      {editId && (
+        <form onSubmit={saveEdit} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
+          <h3 className="font-display text-xl text-white tracking-wider mb-4">UREDI TRENERA</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div><label className="label">Ime i prezime *</label><input className="field-input" value={editForm.ime_prezime} onChange={e => setEditForm({...editForm, ime_prezime: e.target.value})} required /></div>
+            <div><label className="label">Broj dozvole</label><input className="field-input" value={editForm.broj_dozvole} onChange={e => setEditForm({...editForm, broj_dozvole: e.target.value})} /></div>
+            <div><label className="label">Klub</label><input className="field-input" value={editForm.klub} onChange={e => setEditForm({...editForm, klub: e.target.value})} /></div>
+            <div><label className="label">Telefon</label><input className="field-input" value={editForm.telefon} onChange={e => setEditForm({...editForm, telefon: e.target.value})} /></div>
+            <div><label className="label">Mail</label><input type="email" className="field-input" value={editForm.mail} onChange={e => setEditForm({...editForm, mail: e.target.value})} /></div>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ IZMENE</button>
+            <button type="button" onClick={() => { setEditId(null); setEditForm(blank) }} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+          </div>
+        </form>
+      )}
+      <div className="glass rounded-2xl overflow-hidden">
+        <table className="w-full">
+          <thead><tr>{['IME I PREZIME','DOZVOLA','KLUB','TELEFON','MAIL',''].map(h => <th key={h} className="th-style">{h}</th>)}</tr></thead>
+          <tbody>
+            {treneri.length === 0 && <tr><td colSpan={6} className="px-4 py-10 text-center text-blue-500 text-sm">Nema unetih trenera.</td></tr>}
+            {treneri.map((t: any) => (
+              <tr key={t.id} className="border-t border-white/5 tr-hover text-sm">
+                <td className="px-4 py-3 text-white font-semibold">{t.ime_prezime}</td>
+                <td className="px-4 py-3 text-blue-300">{t.broj_dozvole || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{t.klub || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{t.telefon || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{t.mail || '—'}</td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => startEdit(t)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
+   SUDIJE TAB
+══════════════════════════════════════════ */
+function SudijeTab({ supabase }: any) {
+  const [sudije,   setSudije]   = useState<any[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [open,     setOpen]     = useState(false)
+  const [busy,     setBusy]     = useState(false)
+  const blank = { ime_prezime:'', broj_dozvole:'', telefon:'', mail:'', jmbg:'', tekuci_racun:'' }
+  const [form,     setForm]     = useState(blank)
+  const [editId,   setEditId]   = useState<string | null>(null)
+  const [editForm, setEditForm] = useState(blank)
+
+  async function fetch_() {
+    const { data } = await supabase.from('sudije').select('*').order('ime_prezime')
+    setSudije(data ?? []); setLoading(false)
+  }
+  useEffect(() => { fetch_() }, [])
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true)
+    await supabase.from('sudije').insert([form])
+    setForm(blank); setOpen(false); setBusy(false); fetch_()
+  }
+  async function del(id: string) {
+    if (!confirm('Obrisati sudiju?')) return
+    await supabase.from('sudije').delete().eq('id', id); fetch_()
+  }
+  function startEdit(s: any) {
+    setEditId(s.id)
+    setEditForm({ ime_prezime: s.ime_prezime||'', broj_dozvole: s.broj_dozvole||'', telefon: s.telefon||'', mail: s.mail||'', jmbg: s.jmbg||'', tekuci_racun: s.tekuci_racun||'' })
+    setOpen(false)
+  }
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true)
+    await supabase.from('sudije').update(editForm).eq('id', editId)
+    setEditId(null); setEditForm(blank); setBusy(false); fetch_()
+  }
+
+  const FormFields = ({ data, setData }: { data: any; setData: any }) => (
+    <div className="grid sm:grid-cols-2 gap-4">
+      <div><label className="label">Ime i prezime *</label><input className="field-input" value={data.ime_prezime} onChange={e => setData({...data, ime_prezime: e.target.value})} required /></div>
+      <div><label className="label">Broj sudijske dozvole</label><input className="field-input" value={data.broj_dozvole} onChange={e => setData({...data, broj_dozvole: e.target.value})} /></div>
+      <div><label className="label">Telefon</label><input className="field-input" value={data.telefon} onChange={e => setData({...data, telefon: e.target.value})} /></div>
+      <div><label className="label">Mail</label><input type="email" className="field-input" value={data.mail} onChange={e => setData({...data, mail: e.target.value})} /></div>
+      <div><label className="label">JMBG</label><input className="field-input" value={data.jmbg} onChange={e => setData({...data, jmbg: e.target.value})} /></div>
+      <div><label className="label">Broj tekućeg računa</label><input className="field-input" value={data.tekuci_racun} onChange={e => setData({...data, tekuci_racun: e.target.value})} /></div>
+    </div>
+  )
+
+  if (loading) return <div className="text-blue-400 py-10 text-center animate-pulse">Učitavanje...</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-4xl text-white tracking-wider">SUDIJE</h2>
+        <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+      </div>
+      {open && (
+        <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
+          <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI SUDIJA</h3>
+          {/* <FormFields data={form} setData={setForm} /> */}
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div><label className="label">Ime i prezime *</label><input className="field-input" value={form.ime_prezime} onChange={e => setForm({...form, ime_prezime: e.target.value})} required /></div>
+              <div><label className="label">Broj sudijske dozvole</label><input className="field-input" value={form.broj_dozvole} onChange={e => setForm({...form, broj_dozvole: e.target.value})} /></div>
+              <div><label className="label">Telefon</label><input className="field-input" value={form.telefon} onChange={e => setForm({...form, telefon: e.target.value})} /></div>
+              <div><label className="label">Mail</label><input type="email" className="field-input" value={form.mail} onChange={e => setForm({...form, mail: e.target.value})} /></div>
+              <div><label className="label">JMBG</label><input className="field-input" maxLength={13} minLength={13} value={form.jmbg} onChange={e => setForm({...form, jmbg: e.target.value})} /></div>
+              <div><label className="label">Broj tekućeg računa</label><input className="field-input" value={form.tekuci_racun} onChange={e => setForm({...form, tekuci_racun: e.target.value})} /></div>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ</button>
+            <button type="button" onClick={() => setOpen(false)} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+          </div>
+        </form>
+      )}
+      {editId && (
+        <form onSubmit={saveEdit} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
+          <h3 className="font-display text-xl text-white tracking-wider mb-4">UREDI SUDIJU</h3>
+          {/* <FormFields data={editForm} setData={setEditForm} /> */}
+          <div className="grid sm:grid-cols-2 gap-4">
+              <div><label className="label">Ime i prezime *</label><input className="field-input" value={editForm.ime_prezime} onChange={e => setEditForm({...editForm, ime_prezime: e.target.value})} required /></div>
+              <div><label className="label">Broj sudijske dozvole</label><input className="field-input" value={editForm.broj_dozvole} onChange={e => setEditForm({...editForm, broj_dozvole: e.target.value})} /></div>
+              <div><label className="label">Telefon</label><input className="field-input" value={editForm.telefon} onChange={e => setEditForm({...editForm, telefon: e.target.value})} /></div>
+              <div><label className="label">Mail</label><input type="email" className="field-input" value={editForm.mail} onChange={e => setEditForm({...editForm, mail: e.target.value})} /></div>
+              <div><label className="label">JMBG</label><input className="field-input" maxLength={13} minLength={13} value={editForm.jmbg} onChange={e => setEditForm({...editForm, jmbg: e.target.value})} /></div>
+              <div><label className="label">Broj tekućeg računa</label><input className="field-input" value={editForm.tekuci_racun} onChange={e => setEditForm({...editForm, tekuci_racun: e.target.value})} /></div>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ IZMENE</button>
+            <button type="button" onClick={() => { setEditId(null); setEditForm(blank) }} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+          </div>
+        </form>
+      )}
+      <div className="glass rounded-2xl overflow-hidden overflow-x-auto">
+        <table className="w-full min-w-[700px]">
+          <thead><tr>{['IME I PREZIME','DOZVOLA','TELEFON','MAIL','JMBG','TEK. RAČUN',''].map(h => <th key={h} className="th-style">{h}</th>)}</tr></thead>
+          <tbody>
+            {sudije.length === 0 && <tr><td colSpan={7} className="px-4 py-10 text-center text-blue-500 text-sm">Nema unetih sudija.</td></tr>}
+            {sudije.map((s: any) => (
+              <tr key={s.id} className="border-t border-white/5 tr-hover text-sm">
+                <td className="px-4 py-3 text-white font-semibold">{s.ime_prezime}</td>
+                <td className="px-4 py-3 text-blue-300">{s.broj_dozvole || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{s.telefon || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{s.mail || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{s.jmbg || '—'}</td>
+                <td className="px-4 py-3 text-blue-300">{s.tekuci_racun || '—'}</td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => startEdit(s)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
+                  <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+/* ══════════════════════════════════════════
+   BILTENI TAB
+══════════════════════════════════════════ */
+function BilteniTab({ supabase }: any) {
+  const [bilteni,  setBilteni]  = useState<any[]>([])
+  const [loading,  setLoading]  = useState(true)
+  const [open,     setOpen]     = useState(false)
+  const [busy,     setBusy]     = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [form,     setForm]     = useState({ naziv:'', opis:'', pdf_url:'' })
+
+  async function fetch_() {
+    const { data } = await supabase.from('bilteni').select('*').order('created_at', { ascending: false })
+    setBilteni(data ?? []); setLoading(false)
+  }
+  useEffect(() => { fetch_() }, [])
+
+  async function uploadPdf(file: File) {
+    setUploading(true)
+    const ext  = file.name.split('.').pop()
+    const path = `${Date.now()}.${ext}`
+    const { data, error } = await supabase.storage.from('bilteni').upload(path, file, { upsert: false })
+    if (error) { alert('Greška pri uploadu: ' + error.message); setUploading(false); return }
+    const { data: urlData } = supabase.storage.from('bilteni').getPublicUrl(path)
+    setForm(f => ({ ...f, pdf_url: urlData.publicUrl }))
+    setUploading(false)
+  }
+
+  async function add(e: React.FormEvent) {
+    e.preventDefault()
+    if (!form.pdf_url) { alert('Molimo uploadujte PDF fajl.'); return }
+    setBusy(true)
+    await supabase.from('bilteni').insert([form])
+    setForm({ naziv:'', opis:'', pdf_url:'' }); setOpen(false); setBusy(false); fetch_()
+  }
+
+  async function del(id: string, pdf_url: string) {
+    if (!confirm('Obrisati bilten?')) return
+    await supabase.from('bilteni').delete().eq('id', id)
+    // Pokušaj obrisati i fajl iz storage-a
+    try {
+      const path = pdf_url.split('/bilteni/').pop()
+      if (path) await supabase.storage.from('bilteni').remove([path])
+    } catch {}
+    fetch_()
+  }
+
+  function fmtDate(d: string) {
+    if (!d) return ''
+    const dt = new Date(d)
+    return `${dt.getDate().toString().padStart(2,'0')}.${(dt.getMonth()+1).toString().padStart(2,'0')}.${dt.getFullYear()}`
+  }
+
+  if (loading) return <div className="text-blue-400 py-10 text-center animate-pulse">Učitavanje...</div>
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-4xl text-white tracking-wider">BILTENI</h2>
+        <button onClick={() => setOpen(v => !v)} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ BILTEN</button>
+      </div>
+
+      {open && (
+        <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
+          <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI BILTEN</h3>
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div><label className="label">Naziv *</label><input className="field-input" placeholder="Bilten br. 1 — Seniori" value={form.naziv} onChange={e => setForm({...form, naziv: e.target.value})} required /></div>
+            <div><label className="label">Opis (opciono)</label><input className="field-input" placeholder="Kratki opis..." value={form.opis} onChange={e => setForm({...form, opis: e.target.value})} /></div>
+            <div className="sm:col-span-2">
+              <label className="label">PDF Fajl *</label>
+              <input type="file" accept=".pdf" className="field-input cursor-pointer"
+                onChange={e => { if (e.target.files?.[0]) uploadPdf(e.target.files[0]) }} />
+              {uploading && <p className="text-xs text-blue-400 mt-1 animate-pulse">Uploadovanje...</p>}
+              {form.pdf_url && <p className="text-xs text-green-400 mt-1">✓ PDF uspešno uploadovan</p>}
+            </div>
+          </div>
+          <div className="flex gap-2 mt-5">
+            <button type="submit" disabled={busy || uploading} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ</button>
+            <button type="button" onClick={() => setOpen(false)} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+          </div>
+        </form>
+      )}
+
+      <div className="glass rounded-2xl overflow-hidden">
+        <table className="w-full">
+          <thead><tr>{['NAZIV','OPIS','DATUM','PDF',''].map(h => <th key={h} className="th-style">{h}</th>)}</tr></thead>
+          <tbody>
+            {bilteni.length === 0 && <tr><td colSpan={5} className="px-4 py-10 text-center text-blue-500 text-sm">Nema objavljenih biltena.</td></tr>}
+            {bilteni.map((b: any) => (
+              <tr key={b.id} className="border-t border-white/5 tr-hover text-sm">
+                <td className="px-4 py-3 text-white font-semibold">{b.naziv}</td>
+                <td className="px-4 py-3 text-blue-300">{b.opis || '—'}</td>
+                <td className="px-4 py-3 text-blue-400 whitespace-nowrap">{fmtDate(b.created_at)}</td>
+                <td className="px-4 py-3">
+                  <a href={b.pdf_url} target="_blank" rel="noopener noreferrer"
+                    className="text-[#f5c518] hover:underline text-xs flex items-center gap-1">
+                    📄 Otvori PDF
+                  </a>
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <button onClick={() => del(b.id, b.pdf_url)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
                 </td>
               </tr>
             ))}
