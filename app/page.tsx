@@ -34,25 +34,28 @@ export default function Home() {
             Pratite tabele, rezultate i raspored utakmica za sve kategorije.
           </p>
           <div className="flex flex-wrap gap-4">
-            <Link href="/mos-info" className="btn-yellow text-lg">
+            {/* btn-yellow text-lg  U slucaju da hoce da vrati*/}
+            <Link href="/mos-info" className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-[#f5c518]/10 transition-colors flex items-center gap-2 ">
               <Info className="w-5 h-5" /> MOS INFO <ChevronRight className="w-4 h-4" />
             </Link>
             <Link href="/klubovi"
               className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-[#f5c518]/10 transition-colors flex items-center gap-2">
               <Building2 className="w-5 h-5" /> KLUBOVI
             </Link>
+            <Link href="/sudije" className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <Scale className="w-5 h-5" /> SUDIJE 
+            </Link>
+            <Link href="/treneri" className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <Info className="w-5 h-5 " />TRENERI 
+            </Link>
             <a href={DOKUMENTACIJA_URL} target="_blank" rel="noopener noreferrer"
-              className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
               <FileText className="w-5 h-5" /> DOKUMENTACIJA
             </a>
-            <Link href="/treneri" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
-              <Info className="w-5 h-5" /> TRENERI <ChevronRight className="w-4 h-4" />
-            </Link>
-            <Link href="/sudije" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
-              <Scale className="w-5 h-5" /> SUDIJE <ChevronRight className="w-4 h-4" />
-            </Link>
-            <Link href="/bilteni" className="border-2 border-white/20 text-blue-200 px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
-              <FileText className="w-5 h-5" /> BILTENI <ChevronRight className="w-4 h-4" />
+            
+            
+            <Link href="/bilteni" className="border-2 border-[#f5c518] text-[#f5c518] px-6 py-2.5 rounded-lg font-display text-lg tracking-wide hover:bg-white/5 transition-colors flex items-center gap-2">
+              <FileText className="w-5 h-5" /> BILTENI 
             </Link>
           </div>
         </div>
