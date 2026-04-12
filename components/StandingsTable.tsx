@@ -45,10 +45,8 @@ export default function StandingsTable({ standings }: { standings: Standing[] })
           </thead>
           <tbody>
             {standings.map((row, i) => {
-              const isHome = row.team?.name?.toLowerCase().includes('leskovac') ||
-                             row.team?.name?.toLowerCase().includes('mosl')
               return (
-                <tr key={row.id} className={`border-b border-white/5 tr-hover ${isHome ? (zenski ? 'tr-zenska-home' : 'tr-vranje') : ''}`}>
+                <tr key={row.id} className="border-b border-white/5 tr-hover ">
                   <td className="px-4 py-3 text-center text-lg">{ //medal
                   (row.position || i + 1)}</td>
                 
@@ -57,7 +55,7 @@ export default function StandingsTable({ standings }: { standings: Standing[] })
                       <div className={`w-7 h-7 rounded-full flex items-center justify-center font-display text-xs ${zenski ? 'bg-pink-900/50 border border-pink-700 text-pink-300' : 'bg-[#003f8a]/60 border border-[#003f8a] text-[#f5c518]'}`}>
                         {row.team?.name?.charAt(0) ?? '?'}
                       </div>
-                      <span className={`font-semibold text-sm ${isHome ? (zenski ? 'text-pink-300' : 'text-[#f5c518]') : 'text-white'}`}>
+                      <span className="font-semibold text-sm text-white">
                         {row.team?.name ?? '—'}
                       </span>
                     </div>
