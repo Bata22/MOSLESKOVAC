@@ -78,7 +78,8 @@ export default function Navbar() {
         </Link>
 
         {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-1 overflow-x-auto">
+        
+        <div className="hidden md:flex items-center gap-1 ">   {/* overflow-x-auto */}
           <Link href="/"
             className={`px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${pathname === '/' ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
             POČETNA
