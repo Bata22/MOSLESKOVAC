@@ -30,7 +30,7 @@ export default function Dashboard() {
       supabase.from('standings').select('*, team:teams(name)').order('category').order('won', { ascending: false }),
       supabase.from('matches')
         .select('*, home_team:teams!matches_home_team_id_fkey(name), away_team:teams!matches_away_team_id_fkey(name)')
-        .order('match_date', { ascending: false }),
+        .order('match_date', { ascending: true }).order('match_time', { ascending: true }),
     ])
     setTeams(t.data ?? [])
     setStandings(s.data ?? [])
