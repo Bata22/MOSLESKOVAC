@@ -22,7 +22,7 @@ export default function Home() {
         <div className="relative max-w-7xl mx-auto px-4">
           <span className="inline-flex items-center gap-2 bg-[#f5c518]/10 border border-[#f5c518]/30 rounded-full px-4 py-1.5 mb-6">
             <span className="w-2 h-2 rounded-full bg-[#f5c518] animate-pulse" />
-            <span className="text-[#f5c518] text-xs font-semibold tracking-widest">SEZONA 2025/2026</span>
+            <span className="text-[#f5c518] text-xs font-semibold tracking-widest">SEZONA 2026/2027</span>
           </span>
           <h1 className="font-display text-6xl sm:text-9xl text-white leading-none tracking-wide mb-6">
             Međuokružni<br />
