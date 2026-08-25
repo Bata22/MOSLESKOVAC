@@ -119,9 +119,11 @@ export default function Home() {
       <footer className="bg-[#001530] border-t border-[#003f8a]/40 py-8 text-center">
         <div className="font-display text-[#f5c518] text-xl tracking-widest mb-1">Međuokružni odbojkaški savez Leskovac</div>
         <p className="text-blue-500 text-sm">© {new Date().getFullYear()} Međuokružni odbojkaški savez Leskovac</p>
+        <a href="/privacy" className='text-blue-500 text-sm'>Politika privatnosti</a><br/>
         <Link href="/admin/login" className="text-blue-700 text-sm mt-3 inline-block hover:text-blue-400 transition-colors">
           Admin pristup
         </Link>
+        
         <p className="text-blue-500 text-xs mt-1">Kreirao: Bratislav Nikolić</p>
         <a href="mailto:bratislav901@gmail.com?subject=Subject%20Here&body=Message%20Body%20Here">
           <button className="text-blue-500 text-xs">Kontakt programera</button>
