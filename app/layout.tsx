@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Script from 'next/script';
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -30,9 +31,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="MOSL" />
-        <meta name="google-adsense-account" content="ca-pub-6353258661915240"></meta>
       </head>
-      <body>{children}</body>
+      <body>{children}
+        <Script
+          id="google-ads"
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6353258661915240"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+      </body>
     </html>
   )
 }
