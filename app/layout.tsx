@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Međuokružni odbojkaški savez Leskovac',
   description: 'Tabele, rezultati i raspored utakmica — MOSL liga sezona 2025/2026',
   keywords: ['odbojka', 'Leskovac', 'liga', 'tabela', 'MOSL', 'odbojkaški savez'],
+  other:{'google-adsense-account': 'ca-pub-6353258661915240' },
   icons: {
     icon: [{ url: '/mos1.svg', type: 'image/svg+xml' }],
     apple: '/mos1.svg',
@@ -29,6 +30,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         <meta name="apple-mobile-web-app-title" content="MOSL" />
+        <meta name="google-adsense-account" content="ca-pub-6353258661915240"></meta>
       </head>
       <body>{children}</body>
     </html>
