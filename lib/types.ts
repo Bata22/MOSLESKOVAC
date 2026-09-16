@@ -79,4 +79,4 @@ export function isZenska(cat: Category): boolean {
   return CATEGORIES_ZENSKE.some(c => c.value === cat)
 }
 
-export const SEASONS = ['2025/2026','2026/2027','2027/2028','2028/2029','2029/2030']
+export const SEASONS = ['2026/2027','2025/2026','2027/2028','2028/2029','2029/2030']
