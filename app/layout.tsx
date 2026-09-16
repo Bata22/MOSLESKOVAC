@@ -41,13 +41,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <meta name="apple-mobile-web-app-title" content="MOSL" />
       </head>
       <body>{children}
-        <Script
+        {/* <Script
           id="google-ads"
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6353258661915240"
           crossOrigin="anonymous"
           strategy="afterInteractive"
-        />
+        /> */}
       </body>
     </html>
   )
