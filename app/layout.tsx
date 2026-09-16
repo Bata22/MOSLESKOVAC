@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Script from 'next/script';
-import './globals.css'
+// import './globals.css'
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://mosleskovac.vercel.app'),
@@ -25,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="sr">
       <head>
+        <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.svg" />
         <meta name="theme-color" content="#002d63" />
