@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.vercel.mosleskovac.twa",
+      "sha256_cert_fingerprints": [
+        "E3:83:FD:32:25:94:CD:82:14:5D:3C:73:21:A7:9C:B8:89:F5:43:C0:41:4C:69:9D:54:25:D8:3B:0C:8C:9D:F9"
+      ]
+    }
+  }
+]
