@@ -23,3 +23,9 @@ npm-debug.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+#Android
+android.keystore
+app/build
+*.keystore
+*.jks
