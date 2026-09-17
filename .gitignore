@@ -29,3 +29,4 @@ android.keystore
 app/build
 *.keystore
 *.jks
+android/
