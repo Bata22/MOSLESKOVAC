@@ -25,12 +25,16 @@ export default function Dashboard() {
   const [aktivnaSezona, setAktivnaSezona] = useState(SEASONS[0])
   const router   = useRouter()
   const supabase = createClient()
+  const [isReviewer, setIsReviewer] = useState(false)
 
   const checkAuth = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { router.push('/admin/login'); return }
+    setIsReviewer(user.email === 'google-test@mol.com')
     setLoading(false)
   }, [supabase, router])
+  
+  
 
   const reload = useCallback(async () => {
     const [t, s, m] = await Promise.all([
@@ -68,8 +72,9 @@ export default function Dashboard() {
     { id: 'sudije',   label: 'SUDIJE',   icon: Scale     },
     { id: 'bilteni',  label: 'BILTENI',  icon: BookOpen  },
   ]
-
+  
   return (
+    
     <div className="min-h-screen">
       <nav className="sticky top-0 z-50 bg-[#002d63] border-b-2 border-[#f5c518]">
         <div className="max-w-7xl mx-auto px-4">
@@ -106,14 +111,14 @@ export default function Dashboard() {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {tab === 'timovi'   && <TimoviTab   teams={teams} supabase={supabase} onRefresh={reload} />}
-        {tab === 'tabela'   && <TabelaTab   standings={standings.filter(s => s.season === aktivnaSezona)} teams={teams} supabase={supabase} onRefresh={reload} aktivnaSezona={aktivnaSezona} />}
-        {tab === 'utakmice' && <UtakmiceTab matches={matches.filter(m => m.season === aktivnaSezona)} teams={teams} supabase={supabase} onRefresh={reload} aktivnaSezona={aktivnaSezona} />}
-        {tab === 'mosinfo'  && <MosInfoTab  supabase={supabase} />}
-        {tab === 'klubovi'  && <KluboviTab  supabase={supabase} teams={teams} />}
-        {tab === 'treneri'  && <TreneriTab  supabase={supabase} />}
-        {tab === 'sudije'   && <SudijeTab   supabase={supabase} />}
-        {tab === 'bilteni'  && <BilteniTab  supabase={supabase} />}
+        {tab === 'timovi'   && <TimoviTab   teams={teams} supabase={supabase} onRefresh={reload} isReviewer = {isReviewer}  />}
+        {tab === 'tabela'   && <TabelaTab   standings={standings.filter(s => s.season === aktivnaSezona)} teams={teams} supabase={supabase} onRefresh={reload} aktivnaSezona={aktivnaSezona}  isReviewer = {isReviewer} />}
+        {tab === 'utakmice' && <UtakmiceTab matches={matches.filter(m => m.season === aktivnaSezona)} teams={teams} supabase={supabase} onRefresh={reload} aktivnaSezona={aktivnaSezona} isReviewer = {isReviewer} />}
+        {tab === 'mosinfo'  && <MosInfoTab  supabase={supabase} isReviewer = {isReviewer} />}
+        {tab === 'klubovi'  && <KluboviTab  supabase={supabase} teams={teams} isReviewer = {isReviewer} />}
+        {tab === 'treneri'  && <TreneriTab  supabase={supabase} isReviewer = {isReviewer} />}
+        {tab === 'sudije'   && <SudijeTab   supabase={supabase} isReviewer = {isReviewer} />}
+        {tab === 'bilteni'  && <BilteniTab  supabase={supabase} isReviewer = {isReviewer} />}
       </div>
     </div>
   )
