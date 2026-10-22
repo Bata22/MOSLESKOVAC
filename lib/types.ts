@@ -2,7 +2,7 @@ export type Category =
   // Muška vertikala
   | 'seniori' | 'juniori' | 'kadeti' | 'pioniri' | 'predpioniri' | 'mini-muski'
   // Ženska vertikala
-  | 'seniorke' | 'juniorke' | 'kadetkinje' | 'pionirke' | 'predpionirke' | 'mini-zenske' | 'razvojna mini'
+  | 'seniorke' | 'juniorke' | 'kadetkinje' | 'pionirke' | 'predpionirke' | 'mini-zenske' | 'razvojna mini' | 'pionirke-liga-jug'
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed'
 
@@ -69,6 +69,7 @@ export const CATEGORIES_ZENSKE: { value: Category; label: string }[] = [
   { value: 'predpionirke', label: 'Predpionirke'   },
   { value: 'mini-zenske',  label: 'Mini (ženski)'  },
   { value: 'razvojna mini',  label: 'Razvojna Mini  (ženski)'  },
+  { value: 'pionirke-liga-jug', label: 'Pionirke — Liga Jug' },
 ]
 
 // Sve kategorije zajedno (za admin forme, itd.)
