@@ -1,6 +1,6 @@
 export type Category =
   // Muška vertikala
-  | 'seniori' | 'juniori' | 'kadeti' | 'pioniri' | 'predpioniri' | 'mini-muski'
+  | 'seniori' | 'juniori' | 'kadeti' | 'pioniri' | 'predpioniri' | 'mini-muski' | 'razvojna mini muski'
   // Ženska vertikala
   | 'seniorke' | 'juniorke' | 'kadetkinje' | 'pionirke' | 'predpionirke' | 'mini-zenske' | 'razvojna mini' | 'pionirke-liga-jug' | 'pionirke-liga-sever'
 
@@ -59,6 +59,7 @@ export const CATEGORIES_MUSKI: { value: Category; label: string }[] = [
   { value: 'pioniri',     label: 'Pioniri'      },
   { value: 'predpioniri', label: 'Predpioniri'  },
   { value: 'mini-muski',  label: 'Mini (muški)' },
+  { value: 'razvojna mini muski', label: 'Razvojna Mini (muški)' },
 ]
 
 export const CATEGORIES_ZENSKE: { value: Category; label: string }[] = [
