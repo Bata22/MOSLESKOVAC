@@ -4,7 +4,7 @@ import { Scale, Phone, Mail, Hash, CreditCard, User } from 'lucide-react'
 
 async function fetchSudije() {
   const supabase = createClient()
-  const { data } = await supabase.from('sudije').select('*').order('ime_prezime')
+  const { data } = await supabase.from('sudije').select('id, ime_prezime, broj_dozvole, telefon, mail').order('ime_prezime')
   return data ?? []
 }
 

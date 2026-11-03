@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
 
-export default function SudijeTab({ supabase }: any) {
+export default function SudijeTab({ supabase, isReviewer }: any) {
   const [sudije,   setSudije]   = useState<any[]>([])
   const [loading,  setLoading]  = useState(true)
   const [open,     setOpen]     = useState(false)
@@ -19,12 +19,14 @@ export default function SudijeTab({ supabase }: any) {
   useEffect(() => { fetch_() }, [])
 
   async function add(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return // Google recenzent: samo pregled
+    setBusy(true)
     await supabase.from('sudije').insert([form])
     setForm(blank); setOpen(false); setBusy(false); fetch_()
   }
   async function del(id: string) {
-    if (!confirm('Obrisati sudiju?')) return
+    if (isReviewer || !confirm('Obrisati sudiju?')) return
     await supabase.from('sudije').delete().eq('id', id); fetch_()
   }
   function startEdit(s: any) {
@@ -33,7 +35,9 @@ export default function SudijeTab({ supabase }: any) {
     setOpen(false)
   }
   async function saveEdit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return
+    setBusy(true)
     await supabase.from('sudije').update(editForm).eq('id', editId)
     setEditId(null); setEditForm(blank); setBusy(false); fetch_()
   }
@@ -55,9 +59,11 @@ export default function SudijeTab({ supabase }: any) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-display text-4xl text-white tracking-wider">SUDIJE</h2>
-        <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+        {!isReviewer && (
+          <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+        )}
       </div>
-      {open && (
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI SUDIJA</h3>
           {/* <FormFields data={form} setData={setForm} /> */}
@@ -75,7 +81,7 @@ export default function SudijeTab({ supabase }: any) {
           </div>
         </form>
       )}
-      {editId && (
+      {editId && !isReviewer && (
         <form onSubmit={saveEdit} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
           <h3 className="font-display text-xl text-white tracking-wider mb-4">UREDI SUDIJU</h3>
           {/* <FormFields data={editForm} setData={setEditForm} /> */}
@@ -104,11 +110,14 @@ export default function SudijeTab({ supabase }: any) {
                 <td className="px-4 py-3 text-blue-300">{s.broj_dozvole || '—'}</td>
                 <td className="px-4 py-3 text-blue-300">{s.telefon || '—'}</td>
                 <td className="px-4 py-3 text-blue-300">{s.mail || '—'}</td>
-                <td className="px-4 py-3 text-blue-300">{s.jmbg || '—'}</td>
-                <td className="px-4 py-3 text-blue-300">{s.tekuci_racun || '—'}</td>
+                {/* JMBG i račun su lični podaci — recenzent ih ne vidi */}
+                <td className="px-4 py-3 text-blue-300">{isReviewer ? (s.jmbg ? 'skriveno' : '—') : (s.jmbg || '—')}</td>
+                <td className="px-4 py-3 text-blue-300">{isReviewer ? (s.tekuci_racun ? 'skriveno' : '—') : (s.tekuci_racun || '—')}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => startEdit(s)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                  {!isReviewer && (<>
+                    <button onClick={() => startEdit(s)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                  </>)}
                 </td>
               </tr>
             ))}

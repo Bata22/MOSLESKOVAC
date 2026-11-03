@@ -89,7 +89,7 @@ export default function Navbar() {
           <div className="relative" ref={timoviRef}>
             <button onClick={() => { setTimoviOpen(v => !v); setUtakmiceOpen(false) }}
               className={`flex items-center gap-1 px-4 py-2 rounded text-sm font-semibold tracking-wide transition-colors ${isActive('/timovi') ? 'text-[#f5c518]' : 'text-blue-100 hover:text-white hover:bg-white/10'}`}>
-              TIMOVI
+              TABELE
               <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${timoviOpen ? 'rotate-180' : ''}`} />
             </button>
             {timoviOpen && <DropdownContent base="/timovi" close={() => setTimoviOpen(false)} />}
@@ -130,7 +130,7 @@ export default function Navbar() {
 
           {/* Mobile Timovi */}
           <div className="py-2 border-b border-white/10">
-            <p className="text-[#f5c518] font-display tracking-widest text-xs mb-2">TIMOVI</p>
+            <p className="text-[#f5c518] font-display tracking-widest text-xs mb-2">TABELE</p>
             <Link href="/timovi" onClick={() => setMobileOpen(false)} className="block py-2 pl-3 text-blue-300 hover:text-[#f5c518] text-sm">Sve kategorije</Link>
             <p className="pl-3 pt-2 text-[10px] text-blue-400 tracking-widest">MUŠKARCI</p>
             {CATEGORIES_MUSKI.map(c => (

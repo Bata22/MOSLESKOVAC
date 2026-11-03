@@ -1,12 +1,16 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { CATEGORIES, SEASONS } from '@/lib/types'
-import { Plus, Trash2, Save, X, Edit2, Calendar } from 'lucide-react'
+import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
+import KategorijaFilter, { SVE, groupByCategory, katLabel, useKategorija } from './KategorijaFilter'
 
-export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktivnaSezona }: any) {
+const PAGE_SIZE = 25
+
+export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktivnaSezona, isReviewer }: any) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [cat,  setCat]  = useKategorija()
 
   const blank = {
     home_team_id: '', away_team_id: '', category: 'seniori', season: aktivnaSezona,
@@ -38,7 +42,17 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
   }
   function fmtTime(t: string) { return t ? t.substring(0, 5) : null }
 
-  async function add(e: React.FormEvent) {
+  // Forma za novu utakmicu odmah dobija izabranu kategoriju i aktivnu sezonu
+  function toggleAdd() {
+    setOpen(v => !v); setEditMatch(null)
+    setForm(f => ({
+      ...f,
+      season: aktivnaSezona,
+      category: cat !== SVE && CATEGORIES.some(c => c.value === cat) ? cat : f.category,
+    }))
+  }
+
+  async function add(e: FormEvent) {
     e.preventDefault(); setBusy(true)
     const payload: any = { ...form }
     ;['home_sets','away_sets','home_score','away_score'].forEach(k => {
@@ -46,7 +60,9 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
     })
     ;['match_time','round','redni_broj','venue','notes'].forEach(k => { if (!payload[k]) delete payload[k] })
     await supabase.from('matches').insert([payload])
-    setForm(blank); setDateDay(''); setDateMonth(''); setDateYear(''); setTimeHour(''); setTimeMin('')
+    // Ako je filter na drugoj kategoriji, prebaci na onu u koju je utakmica dodata
+    if (cat !== SVE && cat !== payload.category) setCat(payload.category)
+    setForm({ ...blank, season: aktivnaSezona }); setDateDay(''); setDateMonth(''); setDateYear(''); setTimeHour(''); setTimeMin('')
     setOpen(false); setBusy(false); onRefresh()
   }
 
@@ -65,6 +81,9 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
   const [editDateYear, setEditDateYear]   = useState('')
   const [editTimeHour, setEditTimeHour]   = useState('')
   const [editTimeMin, setEditTimeMin]     = useState('')
+
+  // Nova kategorija → kreni od prve strane
+  useEffect(() => { setPage(1) }, [cat])
 
   function startEditMatch(m: any) {
     setEditMatch({
@@ -263,6 +282,96 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
     postponed: { text: 'Odloženo', cls: 'text-yellow-400' },
   }[s] ?? { text: s, cls: 'text-blue-300' })
 
+  // Razvrstavanje po kategorijama
+  const groups = groupByCategory<any>(matches, m => m.category)
+  const shown = cat === SVE ? groups : groups.filter(g => g.value === cat)
+
+  const headers = ['KOLO', 'DATUM', 'VREME', 'DOMAĆIN', 'RES.', 'GOSTI', 'STATUS', ...(isReviewer ? [] : [''])]
+
+  function renderTable(rows: any[]) {
+    return (
+      <div className="glass rounded-2xl overflow-x-auto">
+        <table className="w-full min-w-[720px]">
+          <thead><tr>
+            {headers.map(h => <th key={h} className="th-style">{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {rows.map((m: any) => {
+              const st = statusLabel(m.status)
+              return (
+                <tr key={m.id} className={`border-t border-white/5 tr-hover text-sm ${editMatch?.id === m.id ? 'bg-blue-900/20' : ''}`}>
+                  <td className="px-3 py-2.5 text-blue-400 text-xs text-center">{m.round || '—'}</td>
+                  <td className="px-3 py-2.5 text-blue-200 font-semibold whitespace-nowrap">{fmtDate(m.match_date)}</td>
+                  <td className="px-3 py-2.5 text-blue-200 whitespace-nowrap">{fmtTime(m.match_time) || <span className="text-blue-600">—</span>}</td>
+                  <td className="px-3 py-2.5 text-white font-semibold">{m.home_team?.name}</td>
+                  <td className="px-3 py-2.5 text-center font-display text-[#f5c518]">
+                    {(m.status==='finished'||m.status==='live') ? `${m.home_sets}:${m.away_sets}` : '—'}
+                  </td>
+                  <td className="px-3 py-2.5 text-white font-semibold">{m.away_team?.name}</td>
+                  <td className={`px-3 py-2.5 text-xs ${st.cls}`}>{st.text}</td>
+                  {!isReviewer && (
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-1 justify-end">
+                        <button onClick={() => startEditMatch(m)} className="text-blue-400 hover:text-[#f5c518] p-1 transition-colors" title="Uredi"><Edit2 className="w-4 h-4" /></button>
+                        <button onClick={() => del(m.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors" title="Obriši"><Trash2 className="w-4 h-4" /></button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  // Paginacija (samo kad je izabrana jedna kategorija)
+  function renderPagination(total: number, current: number) {
+    const totalPages = Math.ceil(total / PAGE_SIZE)
+    if (totalPages <= 1) return null
+    return (
+      <div className="flex items-center justify-between mt-4">
+        <p className="text-blue-400 text-sm">
+          Prikazano <span className="text-white font-semibold">{(current-1)*PAGE_SIZE+1}–{Math.min(current*PAGE_SIZE, total)}</span> od <span className="text-white font-semibold">{total}</span> utakmica
+        </p>
+        <div className="flex items-center gap-1">
+          <button onClick={() => setPage(1)} disabled={current === 1}
+            className="px-2 py-1.5 rounded text-xs font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            «
+          </button>
+          <button onClick={() => setPage(Math.max(1, current-1))} disabled={current === 1}
+            className="px-3 py-1.5 rounded text-sm font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            ‹
+          </button>
+          {Array.from({ length: totalPages }, (_, i) => i + 1)
+            .filter(p => p === 1 || p === totalPages || Math.abs(p - current) <= 2)
+            .reduce((acc: (number|string)[], p, idx, arr) => {
+              if (idx > 0 && (p as number) - (arr[idx-1] as number) > 1) acc.push('...')
+              acc.push(p)
+              return acc
+            }, [])
+            .map((p, i) => p === '...'
+              ? <span key={`dots-${i}`} className="px-2 text-blue-600 text-sm">…</span>
+              : <button key={p} onClick={() => setPage(p as number)}
+                  className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors ${current === p ? 'bg-[#f5c518] text-[#002d63]' : 'text-blue-400 hover:text-white hover:bg-white/10'}`}>
+                  {p}
+                </button>
+            )
+          }
+          <button onClick={() => setPage(Math.min(totalPages, current+1))} disabled={current === totalPages}
+            className="px-3 py-1.5 rounded text-sm font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            ›
+          </button>
+          <button onClick={() => setPage(totalPages)} disabled={current === totalPages}
+            className="px-2 py-1.5 rounded text-xs font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+            »
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -270,17 +379,21 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
           <h2 className="font-display text-4xl text-white tracking-wider">UTAKMICE</h2>
           <p className="text-blue-400 text-sm mt-1">Sezona: <span className="text-[#f5c518] font-semibold">{aktivnaSezona}</span></p>
         </div>
-        <div className="flex gap-2">
-          {/* <button onClick={recalculateAll} disabled={editBusy}
-            className="border border-[#f5c518]/40 text-[#f5c518] px-4 py-2 rounded-lg text-sm font-display tracking-wide hover:bg-[#f5c518]/10 transition-colors">
-            ↻ RECALCULATE SVE
-          </button> */}
-          <button onClick={() => { setOpen(v => !v); setEditMatch(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ UTAKMICU</button>
-        </div>
+        {!isReviewer && (
+          <div className="flex gap-2">
+            {/* <button onClick={recalculateAll} disabled={editBusy}
+              className="border border-[#f5c518]/40 text-[#f5c518] px-4 py-2 rounded-lg text-sm font-display tracking-wide hover:bg-[#f5c518]/10 transition-colors">
+              ↻ RECALCULATE SVE
+            </button> */}
+            <button onClick={toggleAdd} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ UTAKMICU</button>
+          </div>
+        )}
       </div>
 
+      <KategorijaFilter groups={groups} total={matches.length} active={cat} onChange={setCat} />
+
       {/* FORMA ZA NOVU UTAKMICU */}
-      {open && (
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVA UTAKMICA</h3>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -365,11 +478,12 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
       )}
 
       {/* EDIT FORMA */}
-      {editMatch && (
-        <div ref={editRef} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/40">
+      {editMatch && !isReviewer && (
+        <div ref={editRef} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/40 scroll-mt-32">
           <h3 className="font-display text-xl text-white tracking-wider mb-1">UREDI UTAKMICU</h3>
           <p className="text-sm text-blue-300 mb-5 font-semibold">
             {editMatch.home_name} <span className="text-[#f5c518] mx-2">VS</span> {editMatch.away_name}
+            <span className="ml-3 text-xs text-blue-400 font-normal">{katLabel(editMatch.category)}</span>
           </p>
 
           {/* Rezultat */}
@@ -455,93 +569,39 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
         </div>
       )}
 
-      {/* TABELA UTAKMICA sa paginacijom */}
-      {(() => {
-        const PAGE_SIZE = 25
-        const totalPages = Math.ceil(matches.length / PAGE_SIZE)
-        const paginated = matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
-        return (
-          <>
-            <div className="glass rounded-2xl overflow-x-auto">
-              <table className="w-full min-w-[750px]">
-                <thead><tr>
-                  {['BR.','DATUM','VREME','DOMAĆIN','RES.','GOSTI','KAT.','STATUS',''].map(h => <th key={h} className="th-style">{h}</th>)}
-                </tr></thead>
-                <tbody>
-                  {matches.length === 0 && <tr><td colSpan={9} className="px-4 py-10 text-center text-blue-500 text-sm">Nema utakmica.</td></tr>}
-                  {paginated.map((m: any) => {
-                    const st = statusLabel(m.status)
-                    return (
-                      <tr key={m.id} className="border-t border-white/5 tr-hover text-sm">
-                        <td className="px-3 py-2.5 text-blue-400 text-xs text-center">{m.round || '—'}</td>
-                        <td className="px-3 py-2.5 text-blue-200 font-semibold whitespace-nowrap">{fmtDate(m.match_date)}</td>
-                        <td className="px-3 py-2.5 text-blue-200 whitespace-nowrap">{fmtTime(m.match_time) || <span className="text-blue-600">—</span>}</td>
-                        <td className="px-3 py-2.5 text-white font-semibold">{m.home_team?.name}</td>
-                        <td className="px-3 py-2.5 text-center font-display text-[#f5c518]">
-                          {(m.status==='finished'||m.status==='live') ? `${m.home_sets}:${m.away_sets}` : '—'}
-                        </td>
-                        <td className="px-3 py-2.5 text-white font-semibold">{m.away_team?.name}</td>
-                        <td className="px-3 py-2.5"><span className="text-xs bg-[#003f8a]/50 text-blue-300 px-1.5 py-0.5 rounded">{m.category}</span></td>
-                        <td className={`px-3 py-2.5 text-xs ${st.cls}`}>{st.text}</td>
-                        <td className="px-3 py-2.5">
-                          <div className="flex items-center gap-1 justify-end">
-                            <button onClick={() => startEditMatch(m)} className="text-blue-400 hover:text-[#f5c518] p-1 transition-colors" title="Uredi"><Edit2 className="w-4 h-4" /></button>
-                            <button onClick={() => del(m.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors" title="Obriši"><Trash2 className="w-4 h-4" /></button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Paginacija */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between mt-4">
-                <p className="text-blue-400 text-sm">
-                  Prikazano <span className="text-white font-semibold">{(page-1)*PAGE_SIZE+1}–{Math.min(page*PAGE_SIZE, matches.length)}</span> od <span className="text-white font-semibold">{matches.length}</span> utakmica
-                </p>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => setPage(1)} disabled={page === 1}
-                    className="px-2 py-1.5 rounded text-xs font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    «
-                  </button>
-                  <button onClick={() => setPage(p => Math.max(1, p-1))} disabled={page === 1}
-                    className="px-3 py-1.5 rounded text-sm font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    ‹
-                  </button>
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter(p => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
-                    .reduce((acc: (number|string)[], p, idx, arr) => {
-                      if (idx > 0 && (p as number) - (arr[idx-1] as number) > 1) acc.push('...')
-                      acc.push(p)
-                      return acc
-                    }, [])
-                    .map((p, i) => p === '...'
-                      ? <span key={`dots-${i}`} className="px-2 text-blue-600 text-sm">…</span>
-                      : <button key={p} onClick={() => setPage(p as number)}
-                          className={`px-3 py-1.5 rounded text-sm font-semibold transition-colors ${page === p ? 'bg-[#f5c518] text-[#002d63]' : 'text-blue-400 hover:text-white hover:bg-white/10'}`}>
-                          {p}
-                        </button>
-                    )
-                  }
-                  <button onClick={() => setPage(p => Math.min(totalPages, p+1))} disabled={page === totalPages}
-                    className="px-3 py-1.5 rounded text-sm font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    ›
-                  </button>
-                  <button onClick={() => setPage(totalPages)} disabled={page === totalPages}
-                    className="px-2 py-1.5 rounded text-xs font-semibold text-blue-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                    »
-                  </button>
+      {/* UTAKMICE PO KATEGORIJAMA */}
+      {shown.length === 0 ? (
+        <div className="glass rounded-2xl px-4 py-10 text-center text-blue-500 text-sm">
+          {cat === SVE
+            ? 'Nema utakmica.'
+            : `Nema utakmica u kategoriji ${katLabel(cat)} za sezonu ${aktivnaSezona}.`}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {shown.map(g => {
+            // Jedna kategorija → paginacija; Sve kategorije → ceo spisak po blokovima
+            const totalPages = Math.max(1, Math.ceil(g.items.length / PAGE_SIZE))
+            const current = Math.min(page, totalPages)
+            const rows = cat === SVE ? g.items : g.items.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE)
+            return (
+              <section key={g.value}>
+                <div className="flex items-baseline justify-between gap-3 mb-2">
+                  <h3 className="font-display text-2xl text-[#f5c518] tracking-wider">
+                    {g.label.toUpperCase()} <span className="text-sm text-blue-400 font-sans tracking-normal">({g.items.length})</span>
+                  </h3>
+                  {cat === SVE && (
+                    <button onClick={() => setCat(g.value)} className="text-xs text-blue-400 hover:text-[#f5c518] transition-colors">
+                      Samo ova kategorija →
+                    </button>
+                  )}
                 </div>
-              </div>
-            )}
-          </>
-        )
-      })()}
+                {renderTable(rows)}
+                {cat !== SVE && renderPagination(g.items.length, current)}
+              </section>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
-
-/* ══════════════════════════════════════════ MOS INFO ══════════════════════════════════════════ */

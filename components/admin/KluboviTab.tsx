@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
 
-export default function KluboviTab({ supabase }: any) {
+export default function KluboviTab({ supabase, isReviewer }: any) {
   const [klubovi,  setKlubovi]  = useState<any[]>([])
   const [loading,  setLoading]  = useState(true)
   const [open,     setOpen]     = useState(false)
@@ -21,13 +21,15 @@ export default function KluboviTab({ supabase }: any) {
   useEffect(() => { fetchKlubovi() }, [])
 
   async function add(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return // Google recenzent: samo pregled
+    setBusy(true)
     await supabase.from('klubovi').insert([form])
     setForm(blank); setOpen(false); setBusy(false); fetchKlubovi()
   }
 
   async function del(id: string) {
-    if (!confirm('Obrisati klub?')) return
+    if (isReviewer || !confirm('Obrisati klub?')) return
     await supabase.from('klubovi').delete().eq('id', id); fetchKlubovi()
   }
 
@@ -38,7 +40,9 @@ export default function KluboviTab({ supabase }: any) {
 }
 
 async function saveEdit(e: React.FormEvent) {
-  e.preventDefault(); setBusy(true)
+  e.preventDefault()
+  if (isReviewer) return
+  setBusy(true)
   await supabase.from('klubovi').update(editForm).eq('id', editId)
   setEditId(null); setEditForm(blank); setBusy(false); fetchKlubovi()
 }
@@ -50,12 +54,14 @@ async function saveEdit(e: React.FormEvent) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-display text-4xl text-white tracking-wider">KLUBOVI</h2>
-        <button onClick={() => setOpen(v => !v)} className="btn-yellow">
-          <Plus className="w-4 h-4" /> DODAJ KLUB
-        </button>
+        {!isReviewer && (
+          <button onClick={() => setOpen(v => !v)} className="btn-yellow">
+            <Plus className="w-4 h-4" /> DODAJ KLUB
+          </button>
+        )}
       </div>
 
-      {open && (
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI KLUB</h3>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -86,7 +92,7 @@ async function saveEdit(e: React.FormEvent) {
           </div>
         </form>
       )}
-      {editId && (
+      {editId && !isReviewer && (
   <form onSubmit={saveEdit} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
     <h3 className="font-display text-xl text-white tracking-wider mb-4">
       UREDI KLUB
@@ -149,12 +155,14 @@ async function saveEdit(e: React.FormEvent) {
                 <td className="px-4 py-3 text-blue-300">{k.telefon || '—'}</td>
                 <td className="px-4 py-3 text-blue-300">{k.mail || '—'}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => startEdit(k)} className="text-blue-400 hover:text-[#f5c518] p-1">
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button onClick={() => del(k.id)} className="text-red-400 hover:text-red-300 p-1">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {!isReviewer && (<>
+                    <button onClick={() => startEdit(k)} className="text-blue-400 hover:text-[#f5c518] p-1">
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button onClick={() => del(k.id)} className="text-red-400 hover:text-red-300 p-1">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </>)}
                 </td>
               </tr>
             ))}
