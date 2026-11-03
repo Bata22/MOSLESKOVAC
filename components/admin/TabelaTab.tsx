@@ -1,13 +1,16 @@
 'use client'
-import { useState } from 'react'
-import { CATEGORIES, SEASONS } from '@/lib/types'
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { CATEGORIES } from '@/lib/types'
 import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
+import KategorijaFilter, { SVE, groupByCategory, katLabel, useKategorija } from './KategorijaFilter'
 
-export default function TabelaTab({ standings, teams, supabase, onRefresh, aktivnaSezona }: any) {
+export default function TabelaTab({ standings, teams, supabase, onRefresh, aktivnaSezona, isReviewer }: any) {
   const [open,    setOpen]    = useState(false)
   const [busy,    setBusy]    = useState(false)
   const [editId,  setEditId]  = useState<string | null>(null)
   const [editRow, setEditRow] = useState<any>(null)
+  const [cat,     setCat]     = useKategorija()
+  const editRef = useRef<HTMLDivElement>(null)
 
   const blank = { team_id: '', category: 'seniori', season: aktivnaSezona, played:0, won:0, lost:0, sets_won:0, sets_lost:0, points_won:0, points_lost:0, points:0 }
   const [form, setForm] = useState(blank)
@@ -31,10 +34,22 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
     ))
   }
 
-  async function add(e: React.FormEvent) {
+  // Forma za novi unos odmah dobija izabranu kategoriju
+  function toggleAdd() {
+    setOpen(v => !v); setEditId(null)
+    setForm(f => ({
+      ...f,
+      season: aktivnaSezona,
+      category: cat !== SVE && CATEGORIES.some(c => c.value === cat) ? cat : f.category,
+    }))
+  }
+
+  async function add(e: FormEvent) {
     e.preventDefault(); setBusy(true)
-    await supabase.from('standings').insert([{ ...form, position: 1 }])
-    await recalcPositions(form.category, form.season)
+    await supabase.from('standings').insert([{ ...form, season: aktivnaSezona, position: 1 }])
+    await recalcPositions(form.category, aktivnaSezona)
+    // Ako je filter na drugoj kategoriji, prebaci na onu u koju je tim dodat
+    if (cat !== SVE && cat !== form.category) setCat(form.category)
     setForm({ ...blank, season: aktivnaSezona }); setOpen(false); setBusy(false); onRefresh()
   }
 
@@ -57,7 +72,13 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
     onRefresh()
   }
 
-  const nEdit = (key: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
+  function startEdit(s: any) {
+    setEditId(s.id); setEditRow({ ...s }); setOpen(false)
+    // Skroluj do forme za izmenu (lista po kategorijama ume da bude dugačka)
+    setTimeout(() => editRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
+  }
+
+  const nEdit = (key: string) => (e: ChangeEvent<HTMLInputElement>) =>
     setEditRow((r: any) => ({ ...r, [key]: parseInt(e.target.value) || 0 }))
 
   const numField = (key: string, label: string) => (
@@ -68,6 +89,50 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
     </div>
   )
 
+  // Razvrstavanje po kategorijama
+  const groups = groupByCategory<any>(standings, s => s.category)
+  const shown = cat === SVE ? groups : groups.filter(g => g.value === cat)
+  const byPosition = (rows: any[]) =>
+    [...rows].sort((a, b) => (a.position ?? 999) - (b.position ?? 999) || (b.won ?? 0) - (a.won ?? 0))
+
+  const headers = ['#', 'TIM', 'UT', 'P', 'I', 'S+', 'S-', 'B+', 'B-', 'BOD', ...(isReviewer ? [] : ['AKCIJE'])]
+
+  function renderTable(rows: any[]) {
+    return (
+      <div className="glass rounded-2xl overflow-hidden overflow-x-auto">
+        <table className="w-full min-w-[640px]">
+          <thead><tr>
+            {headers.map(h => <th key={h} className="th-style">{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {byPosition(rows).map((s: any) => (
+              <tr key={s.id} className={`border-t border-white/5 tr-hover text-sm ${editId === s.id ? 'bg-blue-900/20' : ''}`}>
+                <td className="px-3 py-2.5 text-center"><span className="font-display text-lg text-[#f5c518]">{s.position}</span></td>
+                <td className="px-3 py-2.5 text-white font-semibold">{s.team?.name}</td>
+                <td className="px-3 py-2.5 text-center text-blue-300">{s.played}</td>
+                <td className="px-3 py-2.5 text-center text-green-400 font-semibold">{s.won}</td>
+                <td className="px-3 py-2.5 text-center text-red-400">{s.lost}</td>
+                <td className="px-3 py-2.5 text-center text-blue-300">{s.sets_won}</td>
+                <td className="px-3 py-2.5 text-center text-blue-300">{s.sets_lost}</td>
+                <td className="px-3 py-2.5 text-center text-blue-300">{s.points_won}</td>
+                <td className="px-3 py-2.5 text-center text-blue-300">{s.points_lost}</td>
+                <td className="px-3 py-2.5 text-center font-display text-xl text-[#f5c518]">{s.points}</td>
+                {!isReviewer && (
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-1 justify-end">
+                      <button onClick={() => startEdit(s)} className="text-blue-400 hover:text-[#f5c518] p-1 transition-colors" title="Uredi"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors" title="Obriši"><Trash2 className="w-4 h-4" /></button>
+                    </div>
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -75,12 +140,16 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
           <h2 className="font-display text-4xl text-white tracking-wider">TABELA LIGA</h2>
           <p className="text-blue-400 text-sm mt-1">Sezona: <span className="text-[#f5c518] font-semibold">{aktivnaSezona}</span></p>
         </div>
-        <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow">
-          <Plus className="w-4 h-4" /> DODAJ UNOS
-        </button>
+        {!isReviewer && (
+          <button onClick={toggleAdd} className="btn-yellow">
+            <Plus className="w-4 h-4" /> DODAJ UNOS
+          </button>
+        )}
       </div>
 
-      {open && (
+      <KategorijaFilter groups={groups} total={standings.length} active={cat} onChange={setCat} />
+
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI UNOS — {aktivnaSezona}</h3>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -113,10 +182,10 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
         </form>
       )}
 
-      {editId && editRow && (
-        <div className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
+      {editId && editRow && !isReviewer && (
+        <div ref={editRef} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40 scroll-mt-32">
           <h3 className="font-display text-xl text-white tracking-wider mb-1">UREDI: <span className="text-[#f5c518]">{editRow.team?.name}</span></h3>
-          <p className="text-xs text-blue-400 mb-4 capitalize">{editRow.category} — {editRow.season}</p>
+          <p className="text-xs text-blue-400 mb-4">{katLabel(editRow.category)} — {editRow.season}</p>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-3">
             {[['played','Utakmice'],['won','Pobede'],['lost','Izgubljene'],['sets_won','Setovi +'],['sets_lost','Setovi -'],['points_won','Poeni +'],['points_lost','Poeni -'],['points','Bodovi']].map(([k,l]) => (
               <div key={k}>
@@ -132,40 +201,31 @@ export default function TabelaTab({ standings, teams, supabase, onRefresh, aktiv
         </div>
       )}
 
-      <div className="glass rounded-2xl overflow-hidden overflow-x-auto">
-        <table className="w-full min-w-[700px]">
-          <thead><tr>
-            {['#','TIM','KAT.','SEZONA','UT','P','I','S+','S-','B+','B-','BOD','AKCIJE'].map(h => (
-              <th key={h} className="th-style">{h}</th>
-            ))}
-          </tr></thead>
-          <tbody>
-            {standings.length === 0 && <tr><td colSpan={13} className="px-4 py-10 text-center text-blue-500 text-sm">Nema podataka za sezonu {aktivnaSezona}.</td></tr>}
-            {standings.map((s: any) => (
-              <tr key={s.id} className={`border-t border-white/5 tr-hover text-sm ${editId === s.id ? 'bg-blue-900/20' : ''}`}>
-                <td className="px-3 py-2.5 text-center"><span className="font-display text-lg text-[#f5c518]">{s.position}</span></td>
-                <td className="px-3 py-2.5 text-white font-semibold">{s.team?.name}</td>
-                <td className="px-3 py-2.5"><span className="text-xs bg-[#003f8a]/50 text-blue-300 px-1.5 py-0.5 rounded">{s.category}</span></td>
-                <td className="px-3 py-2.5 text-blue-400">{s.season}</td>
-                <td className="px-3 py-2.5 text-center text-blue-300">{s.played}</td>
-                <td className="px-3 py-2.5 text-center text-green-400 font-semibold">{s.won}</td>
-                <td className="px-3 py-2.5 text-center text-red-400">{s.lost}</td>
-                <td className="px-3 py-2.5 text-center text-blue-300">{s.sets_won}</td>
-                <td className="px-3 py-2.5 text-center text-blue-300">{s.sets_lost}</td>
-                <td className="px-3 py-2.5 text-center text-blue-300">{s.points_won}</td>
-                <td className="px-3 py-2.5 text-center text-blue-300">{s.points_lost}</td>
-                <td className="px-3 py-2.5 text-center font-display text-xl text-[#f5c518]">{s.points}</td>
-                <td className="px-3 py-2.5">
-                  <div className="flex items-center gap-1 justify-end">
-                    <button onClick={() => { setEditId(s.id); setEditRow({...s}); setOpen(false) }} className="text-blue-400 hover:text-[#f5c518] p-1 transition-colors"><Edit2 className="w-4 h-4" /></button>
-                    <button onClick={() => del(s.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {shown.length === 0 ? (
+        <div className="glass rounded-2xl px-4 py-10 text-center text-blue-500 text-sm">
+          {cat === SVE
+            ? `Nema podataka za sezonu ${aktivnaSezona}.`
+            : `Nema timova u kategoriji ${katLabel(cat)} za sezonu ${aktivnaSezona}.`}
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {shown.map(g => (
+            <section key={g.value}>
+              <div className="flex items-baseline justify-between gap-3 mb-2">
+                <h3 className="font-display text-2xl text-[#f5c518] tracking-wider">
+                  {g.label.toUpperCase()} <span className="text-sm text-blue-400 font-sans tracking-normal">({g.items.length})</span>
+                </h3>
+                {cat === SVE && (
+                  <button onClick={() => setCat(g.value)} className="text-xs text-blue-400 hover:text-[#f5c518] transition-colors">
+                    Samo ova kategorija →
+                  </button>
+                )}
+              </div>
+              {renderTable(g.items)}
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

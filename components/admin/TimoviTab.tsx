@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react'
 import { CATEGORIES } from '@/lib/types'
 import { Plus, Trash2, Save, X } from 'lucide-react'
 
-export default function TimoviTab({ teams, supabase, onRefresh }: any) {
+export default function TimoviTab({ teams, supabase, onRefresh, isReviewer }: any) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [form, setForm] = useState({ name: '', category: 'seniori', city: '' })
@@ -15,14 +15,16 @@ export default function TimoviTab({ teams, supabase, onRefresh }: any) {
   }, [supabase])
 
   async function add(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return // Google recenzent: samo pregled
+    setBusy(true)
     await supabase.from('teams').insert([form])
     setForm({ name: '', category: 'seniori', city: '' })
     setOpen(false); setBusy(false); onRefresh()
   }
 
   async function del(id: string) {
-    if (!confirm('Obrisati tim?')) return
+    if (isReviewer || !confirm('Obrisati tim?')) return
     await supabase.from('teams').delete().eq('id', id); onRefresh()
   }
 
@@ -30,10 +32,12 @@ export default function TimoviTab({ teams, supabase, onRefresh }: any) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-display text-4xl text-white tracking-wider">TIMOVI</h2>
-        <button onClick={() => setOpen(v => !v)} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ TIM</button>
+        {!isReviewer && (
+          <button onClick={() => setOpen(v => !v)} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ TIM</button>
+        )}
       </div>
 
-      {open && (
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI TIM</h3>
           <div className="grid sm:grid-cols-3 gap-4">
@@ -76,7 +80,9 @@ export default function TimoviTab({ teams, supabase, onRefresh }: any) {
                 <td className="px-4 py-3"><span className="text-xs bg-[#003f8a]/50 text-blue-300 px-2 py-0.5 rounded">{t.category}</span></td>
                 <td className="px-4 py-3 text-blue-400 text-sm hidden sm:table-cell">{t.city || '—'}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  {!isReviewer && (
+                    <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                  )}
                 </td>
               </tr>
             ))}

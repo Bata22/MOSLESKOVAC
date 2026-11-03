@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
 
-export default function TreneriTab({ supabase }: any) {
+export default function TreneriTab({ supabase, isReviewer }: any) {
   const [treneri,  setTreneri]  = useState<any[]>([])
   const [loading,  setLoading]  = useState(true)
   const [open,     setOpen]     = useState(false)
@@ -19,12 +19,14 @@ export default function TreneriTab({ supabase }: any) {
   useEffect(() => { fetchTreneri_() }, [])
 
   async function add(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return // Google recenzent: samo pregled
+    setBusy(true)
     await supabase.from('treneri').insert([form])
     setForm(blank); setOpen(false); setBusy(false); fetchTreneri_()
   }
   async function del(id: string) {
-    if (!confirm('Obrisati trenera?')) return
+    if (isReviewer || !confirm('Obrisati trenera?')) return
     await supabase.from('treneri').delete().eq('id', id); fetchTreneri_()
   }
   function startEdit(t: any) {
@@ -33,7 +35,9 @@ export default function TreneriTab({ supabase }: any) {
     setOpen(false)
   }
   async function saveEdit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return
+    setBusy(true)
     await supabase.from('treneri').update(editForm).eq('id', editId)
     setEditId(null); setEditForm(blank); setBusy(false); fetchTreneri_()
   }
@@ -45,9 +49,11 @@ export default function TreneriTab({ supabase }: any) {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="font-display text-4xl text-white tracking-wider">TRENERI</h2>
-        <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+        {!isReviewer && (
+          <button onClick={() => { setOpen(v => !v); setEditId(null) }} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ</button>
+        )}
       </div>
-      {open && (
+      {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
           <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVI TRENER</h3>
      
@@ -64,7 +70,7 @@ export default function TreneriTab({ supabase }: any) {
           </div>
         </form>
       )}
-      {editId && (
+      {editId && !isReviewer && (
         <form onSubmit={saveEdit} className="glass rounded-2xl p-6 mb-6 border border-blue-400/40">
           <h3 className="font-display text-xl text-white tracking-wider mb-4">UREDI TRENERA</h3>
           <div className="grid sm:grid-cols-2 gap-4">
@@ -93,8 +99,10 @@ export default function TreneriTab({ supabase }: any) {
                 <td className="px-4 py-3 text-blue-300">{t.telefon || '—'}</td>
                 <td className="px-4 py-3 text-blue-300">{t.mail || '—'}</td>
                 <td className="px-4 py-3 text-right">
-                  <button onClick={() => startEdit(t)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
-                  <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                  {!isReviewer && (<>
+                    <button onClick={() => startEdit(t)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
+                    <button onClick={() => del(t.id)} className="text-red-400 hover:text-red-300 p-1"><Trash2 className="w-4 h-4" /></button>
+                  </>)}
                 </td>
               </tr>
             ))}

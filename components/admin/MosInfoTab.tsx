@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
 
-export default function MosInfoTab({ supabase }: any) {
+export default function MosInfoTab({ supabase, isReviewer }: any) {
   const [info,      setInfo]      = useState<any>(null)
   const [uprava,    setUprava]    = useState<any[]>([])
   const [busy,      setBusy]      = useState(false)
@@ -35,7 +35,9 @@ export default function MosInfoTab({ supabase }: any) {
   }
 
   async function saveInfo(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return // Google recenzent: samo pregled
+    setBusy(true)
     if (info?.id) {
       await supabase.from('mos_info').update({ naziv:info.naziv, adresa:info.adresa, pib:info.pib, mail:info.mail, ziro_racun:info.ziro_racun }).eq('id', info.id)
     } else {
@@ -46,14 +48,16 @@ export default function MosInfoTab({ supabase }: any) {
   }
 
   async function addUprava(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true)
+    e.preventDefault()
+    if (isReviewer) return
+    setBusy(true)
     await supabase.from('mos_uprava').insert([upravaForm])
     setUpravaForm({ pozicija:'', ime_prezime:'', telefon:'', mail:'', redosled:0 })
     setOpenForm(false); setBusy(false); reload()
   }
 
   async function delUprava(id: string) {
-    if (!confirm('Obrisati?')) return
+    if (isReviewer || !confirm('Obrisati?')) return
     await supabase.from('mos_uprava').delete().eq('id', id); reload()
   }
 
@@ -72,6 +76,7 @@ export default function MosInfoTab({ supabase }: any) {
 
 async function saveEditAdminitstration(e: React.FormEvent) {
   e.preventDefault()
+  if (isReviewer) return
   setBusy(true)
   await supabase.from('mos_uprava').update(editForm).eq('id', editId)
   setEditId(null)
@@ -103,11 +108,13 @@ async function saveEditAdminitstration(e: React.FormEvent) {
             ].map(f => (
               <div key={f.key}>
                 <label className="label">{f.label}</label>
-                <input className="field-input" value={info?.[f.key]||''} onChange={e => setInfo((i: any) => ({...i, [f.key]: e.target.value}))} />
+                <input className="field-input" readOnly={isReviewer} value={info?.[f.key]||''} onChange={e => setInfo((i: any) => ({...i, [f.key]: e.target.value}))} />
               </div>
             ))}
           </div>
-          <button type="submit" disabled={busy} className="btn-yellow mt-5"><Save className="w-4 h-4" /> SAČUVAJ INFORMACIJE</button>
+          {!isReviewer && (
+            <button type="submit" disabled={busy} className="btn-yellow mt-5"><Save className="w-4 h-4" /> SAČUVAJ INFORMACIJE</button>
+          )}
         </form>
       </div>
 
@@ -118,10 +125,12 @@ async function saveEditAdminitstration(e: React.FormEvent) {
             <h3 className="font-display text-xl text-[#f5c518] tracking-wider">ADMINISTRACIJA SAVEZA</h3>
             <p className="text-xs text-blue-400 mt-0.5">Prikazuje se na javnoj stranici</p>
           </div>
-          <button onClick={() => setOpenForm(v => !v)} className="btn-yellow text-sm"><Plus className="w-4 h-4" /> DODAJ</button>
+          {!isReviewer && (
+            <button onClick={() => setOpenForm(v => !v)} className="btn-yellow text-sm"><Plus className="w-4 h-4" /> DODAJ</button>
+          )}
         </div>
 
-        {openForm && (
+        {openForm && !isReviewer && (
           <form onSubmit={addUprava} className="p-6 border-b border-white/10 bg-black/20">
             <div className="grid sm:grid-cols-2 gap-4">
               <div><label className="label">Pozicija *</label><input className="field-input" placeholder="npr. Predsednik" value={upravaForm.pozicija} onChange={e => setUpravaForm({...upravaForm,pozicija:e.target.value})} required /></div>
@@ -136,7 +145,7 @@ async function saveEditAdminitstration(e: React.FormEvent) {
             </div>
           </form>
         )}
-        {editId && (
+        {editId && !isReviewer && (
         <form onSubmit={saveEditAdminitstration} className="p-6 border-b border-white/10 bg-blue-950/20">
             <h3 className="font-display text-lg text-white tracking-wider mb-4">UREDI ČLANA UPRAVE</h3>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -163,8 +172,10 @@ async function saveEditAdminitstration(e: React.FormEvent) {
                 {u.telefon && <span className="text-blue-300 text-sm">{u.telefon}</span>}
                 {u.mail    && <span className="text-blue-300 text-sm">{u.mail}</span>}
               </div>
-               <button onClick={() => startEditAdminitstration(u)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
-              <button onClick={() => delUprava(u.id)} className="text-red-400 hover:text-red-300 p-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
+              {!isReviewer && (<>
+                <button onClick={() => startEditAdminitstration(u)} className="text-blue-400 hover:text-[#f5c518] p-1"><Edit2 className="w-4 h-4" /></button>
+                <button onClick={() => delUprava(u.id)} className="text-red-400 hover:text-red-300 p-1 shrink-0"><Trash2 className="w-4 h-4" /></button>
+              </>)}
             </div>
           ))}
         </div>
