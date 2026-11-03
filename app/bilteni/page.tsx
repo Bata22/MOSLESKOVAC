@@ -1,11 +1,14 @@
+import Link from 'next/link'
 import Navbar from '@/components/Navbar'
 import { createClient } from '@/lib/supabase/server'
-import { FileText, Download, Calendar } from 'lucide-react'
+import { FileText, Download, Calendar, Eye } from 'lucide-react'
+import { parseSnapshot } from '@/components/bilten/BiltenDocument'
 
 async function fetchBilteni() {
   const supabase = createClient()
   const { data } = await supabase.from('bilteni').select('*').order('created_at', { ascending: false })
-  return data ?? []
+  // Prikazuju se upload-ovani PDF-ovi i bilteni generisani u admin panelu
+  return (data ?? []).filter((b: any) => b.pdf_url || parseSnapshot(b.meta))
 }
 
 export default async function BilteniPage() {
@@ -16,6 +19,8 @@ export default async function BilteniPage() {
     const dt = new Date(d)
     return `${dt.getDate().toString().padStart(2,'0')}.${(dt.getMonth()+1).toString().padStart(2,'0')}.${dt.getFullYear()}`
   }
+
+  const btn = 'flex items-center gap-2 bg-[#f5c518]/10 hover:bg-[#f5c518]/20 border border-[#f5c518]/30 text-[#f5c518] px-4 py-2 rounded-lg text-sm font-semibold transition-colors shrink-0'
 
   return (
     <div className="min-h-screen">
@@ -48,11 +53,11 @@ export default async function BilteniPage() {
             <div className="divide-y divide-white/5">
               {bilteni.map((b: any) => (
                 <div key={b.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-4 min-w-0">
                     <div className="w-10 h-10 rounded-lg bg-red-900/40 border border-red-700/40 flex items-center justify-center shrink-0">
                       <FileText className="w-5 h-5 text-red-400" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-white font-semibold">{b.naziv}</p>
                       {b.opis && <p className="text-blue-400 text-sm mt-0.5">{b.opis}</p>}
                       <div className="flex items-center gap-1 text-xs text-blue-500 mt-1">
@@ -61,10 +66,15 @@ export default async function BilteniPage() {
                       </div>
                     </div>
                   </div>
-                  <a href={b.pdf_url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 bg-[#f5c518]/10 hover:bg-[#f5c518]/20 border border-[#f5c518]/30 text-[#f5c518] px-4 py-2 rounded-lg text-sm font-semibold transition-colors shrink-0">
-                    <Download className="w-4 h-4" /> PDF
-                  </a>
+                  {b.pdf_url ? (
+                    <a href={b.pdf_url} target="_blank" rel="noopener noreferrer" className={btn}>
+                      <Download className="w-4 h-4" /> PDF
+                    </a>
+                  ) : (
+                    <Link href={`/bilteni/${b.id}`} className={btn}>
+                      <Eye className="w-4 h-4" /> Otvori
+                    </Link>
+                  )}
                 </div>
               ))}
             </div>
