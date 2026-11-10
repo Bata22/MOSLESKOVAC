@@ -1,38 +1,91 @@
 'use client'
 
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { CATEGORIES, SEASONS } from '@/lib/types'
-import { Plus, Trash2, Save, X, Edit2 } from 'lucide-react'
+import { Plus, Trash2, Save, X, Edit2, AlertTriangle } from 'lucide-react'
 import KategorijaFilter, { SVE, groupByCategory, katLabel, useKategorija } from './KategorijaFilter'
+import SetoviUnos from './SetoviUnos'
+import { recalcStandings } from '@/lib/standings'
+import {
+  PRAZNO_UKUPNO, formatSetova, prazniSetovi, rezultatIzForme, setoviUFormu,
+  type SetDraft, type UkupnoForma,
+} from '@/lib/setovi'
 
 const PAGE_SIZE = 25
+
+const bezRezultata = (r: { home_sets: number | null; away_sets: number | null; set_scores: unknown }) =>
+  !r.set_scores && !r.home_sets && !r.away_sets
+
+// Upis u tabelu matches. Ako u bazi još nema kolone set_scores (SQL nije pokrenut),
+// utakmica se ipak sačuva (bez setova) i admin dobija uputstvo.
+async function upisiUtakmicu(op: (p: any) => PromiseLike<{ error: any }>, payload: any): Promise<string | null> {
+  let { error } = await op(payload)
+  if (error && /set_scores/.test(String(error.message ?? ''))) {
+    const { set_scores, ...bez } = payload
+    ;({ error } = await op(bez))
+    if (!error) {
+      if (set_scores)
+        alert('Utakmica je sačuvana, ali BEZ rezultata po setovima: u bazi još nema kolone set_scores.\n\n' +
+          'U Supabase SQL Editoru pokreni:\nALTER TABLE matches ADD COLUMN IF NOT EXISTS set_scores JSONB;')
+      return null
+    }
+  }
+  return error ? String(error.message ?? error) : null
+}
 
 export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktivnaSezona, isReviewer }: any) {
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [cat,  setCat]  = useKategorija()
+  const [poruka, setPoruka] = useState('')
+  const [samoProblemi, setSamoProblemi] = useState(false)
 
   const blank = {
     home_team_id: '', away_team_id: '', category: 'seniori', season: aktivnaSezona,
     match_date: '', match_time: '', venue: '', status: 'scheduled',
-    redni_broj: '', round: '', home_sets: '', away_sets: '', home_score: '', away_score: '', notes: ''
+    redni_broj: '', round: '', notes: ''
   }
   const [form, setForm] = useState(blank)
+  const [formSets, setFormSets] = useState<SetDraft[]>(prazniSetovi())
+  const [formUkupno, setFormUkupno] = useState<UkupnoForma>(PRAZNO_UKUPNO)
   const [dateDay, setDateDay]     = useState('')
   const [dateMonth, setDateMonth] = useState('')
   const [dateYear, setDateYear]   = useState('')
   const [timeHour, setTimeHour]   = useState('')
   const [timeMin, setTimeMin]     = useState('')
 
+  /* ── timovi po kategoriji ── */
+
+  const teamById = useMemo(() => {
+    const m = new Map<string, any>()
+    ;(teams ?? []).forEach((t: any) => m.set(t.id, t))
+    return m
+  }, [teams])
+
+  // Za utakmicu se biraju samo timovi iz njene kategorije (isti klub ima po jedan tim u svakoj kategoriji)
+  const timoviZa = (category: string) => (teams ?? []).filter((t: any) => t.category === category)
+  const teamLabel = (t: any) => `${t.name} — ${katLabel(t.category)}`
+  const imeTima = (id: string, fallback: string) => teamById.get(id)?.name ?? fallback
+
+  // Kategorija tima ako NIJE ista kao kategorija utakmice (greška u podacima), inače null
+  function pogresnaKat(teamId: string, category: string): string | null {
+    const t = teamById.get(teamId)
+    return t && t.category !== category ? t.category : null
+  }
+
   function updateDate(day: string, month: string, year: string) {
     setDateDay(day); setDateMonth(month); setDateYear(year)
     if (day && month && year && year.length === 4)
       setForm(f => ({ ...f, match_date: `${year}-${month.padStart(2,'0')}-${day.padStart(2,'0')}` }))
+    else
+      setForm(f => ({ ...f, match_date: '' }))
   }
   function updateTime(hour: string, min: string) {
     setTimeHour(hour); setTimeMin(min)
     if (hour !== '' && min !== '')
       setForm(f => ({ ...f, match_time: `${hour.padStart(2,'0')}:${min.padStart(2,'0')}` }))
+    else
+      setForm(f => ({ ...f, match_time: '' }))
   }
 
   function fmtDate(d: string) {
@@ -42,38 +95,103 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
   }
   function fmtTime(t: string) { return t ? t.substring(0, 5) : null }
 
+  function resetRezultat() { setFormSets(prazniSetovi()); setFormUkupno(PRAZNO_UKUPNO) }
+
   // Forma za novu utakmicu odmah dobija izabranu kategoriju i aktivnu sezonu
   function toggleAdd() {
-    setOpen(v => !v); setEditMatch(null)
-    setForm(f => ({
-      ...f,
-      season: aktivnaSezona,
-      category: cat !== SVE && CATEGORIES.some(c => c.value === cat) ? cat : f.category,
-    }))
+    setOpen(v => !v); setEditMatch(null); setPoruka('')
+    const c = cat !== SVE && CATEGORIES.some(x => x.value === cat) ? cat : form.category
+    promeniKategoriju(c)
+    setForm(f => ({ ...f, season: aktivnaSezona }))
+  }
+
+  // Promena kategorije: izabrani timovi ostaju samo ako su iz nove kategorije
+  function promeniKategoriju(category: string) {
+    setForm(f => {
+      const ok = (id: string) => !!id && teamById.get(id)?.category === category
+      return {
+        ...f, category,
+        home_team_id: ok(f.home_team_id) ? f.home_team_id : '',
+        away_team_id: ok(f.away_team_id) ? f.away_team_id : '',
+      }
+    })
   }
 
   async function add(e: FormEvent) {
-    e.preventDefault(); setBusy(true)
-    const payload: any = { ...form }
-    ;['home_sets','away_sets','home_score','away_score'].forEach(k => {
-      if (payload[k] === '') delete payload[k]; else payload[k] = parseInt(payload[k])
-    })
-    ;['match_time','round','redni_broj','venue','notes'].forEach(k => { if (!payload[k]) delete payload[k] })
-    await supabase.from('matches').insert([payload])
+    e.preventDefault()
+    // Koje dugme je poslalo formu: "Sačuvaj" ili "Sačuvaj i dodaj sledeću"
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLElement | null
+    const sledeca = submitter?.dataset?.sledeca === '1'
+    if (isReviewer) return
+    if (!form.home_team_id || !form.away_team_id) { alert('Izaberi domaćina i goste.'); return }
+    if (form.home_team_id === form.away_team_id) { alert('Domaćin i gosti ne mogu biti isti tim.'); return }
+    if (pogresnaKat(form.home_team_id, form.category) || pogresnaKat(form.away_team_id, form.category)) {
+      alert(`Oba tima moraju biti iz kategorije ${katLabel(form.category)}.`); return
+    }
+    if (!form.match_date) { alert('Upiši datum utakmice (dan, mesec i godinu).'); return }
+
+    const showScore = form.status === 'finished' || form.status === 'live'
+    const { rezultat, greska } = rezultatIzForme(formSets, formUkupno, form.category, form.status)
+    if (showScore && greska) { alert(greska); return }
+    if (form.status === 'finished' && bezRezultata(rezultat) &&
+        !confirm('Utakmica je označena kao „Završeno“, ali nema upisan rezultat. Sačuvati ipak?')) return
+
+    const payload: any = {
+      home_team_id: form.home_team_id, away_team_id: form.away_team_id,
+      category: form.category, season: form.season,
+      match_date: form.match_date, status: form.status,
+    }
+    ;(['match_time', 'round', 'redni_broj', 'venue', 'notes'] as const).forEach(k => { if (form[k]) payload[k] = form[k] })
+    if (showScore) {
+      Object.assign(payload, rezultat)
+      if (!rezultat.set_scores) delete payload.set_scores
+      ;(['home_sets', 'away_sets', 'home_score', 'away_score'] as const).forEach(k => { if (payload[k] == null) delete payload[k] })
+    }
+
+    setBusy(true); setPoruka('')
+    const err = await upisiUtakmicu(p => supabase.from('matches').insert([p]), payload)
+    if (err) { setBusy(false); alert('Utakmica nije sačuvana: ' + err); return }
+
+    if (payload.status === 'finished') {
+      const r = await recalcStandings(supabase, payload.category, payload.season,
+        { touched: [payload.home_team_id, payload.away_team_id] })
+      if (r.error) alert('Utakmica je sačuvana, ali tabela nije preračunata: ' + r.error)
+    }
+
     // Ako je filter na drugoj kategoriji, prebaci na onu u koju je utakmica dodata
     if (cat !== SVE && cat !== payload.category) setCat(payload.category)
-    setForm({ ...blank, season: aktivnaSezona }); setDateDay(''); setDateMonth(''); setDateYear(''); setTimeHour(''); setTimeMin('')
-    setOpen(false); setBusy(false); onRefresh()
+    const opis = `${imeTima(payload.home_team_id, 'Domaćin')} — ${imeTima(payload.away_team_id, 'Gosti')}`
+    resetRezultat()
+    setTimeHour(''); setTimeMin('')
+    if (sledeca) {
+      // Ostaju kategorija, datum, kolo, teren, sezona i status — za brz unos celog kola
+      setForm(f => ({ ...f, home_team_id: '', away_team_id: '', match_time: '', redni_broj: '', notes: '' }))
+      setPoruka(`✓ Sačuvano: ${opis}. Upiši sledeću utakmicu.`)
+    } else {
+      setForm({ ...blank, season: aktivnaSezona, category: payload.category })
+      setDateDay(''); setDateMonth(''); setDateYear('')
+      setOpen(false)
+    }
+    setBusy(false); onRefresh()
   }
 
-  async function del(id: string) {
+  async function del(m: any) {
     if (!confirm('Obrisati utakmicu?')) return
-    await supabase.from('matches').delete().eq('id', id); onRefresh()
+    const { error } = await supabase.from('matches').delete().eq('id', m.id)
+    if (error) { alert('Utakmica nije obrisana: ' + error.message); return }
+    if (m.status === 'finished') {
+      const r = await recalcStandings(supabase, m.category, m.season, { touched: [m.home_team_id, m.away_team_id] })
+      if (r.error) alert('Utakmica je obrisana, ali tabela nije preračunata: ' + r.error)
+    }
+    if (editMatch?.id === m.id) setEditMatch(null)
+    onRefresh()
   }
 
   // Edit rezultata + datum/vreme
   const [page,      setPage]          = useState(1)
   const [editMatch, setEditMatch]     = useState<any>(null)
+  const [editSets,  setEditSets]      = useState<SetDraft[]>(prazniSetovi())
+  const [editUkupno, setEditUkupno]   = useState<UkupnoForma>(PRAZNO_UKUPNO)
   const editRef = useRef<HTMLDivElement>(null)
   const [editBusy,  setEditBusy]      = useState(false)
   const [editDateDay, setEditDateDay]     = useState('')
@@ -83,17 +201,24 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
   const [editTimeMin, setEditTimeMin]     = useState('')
 
   // Nova kategorija → kreni od prve strane
-  useEffect(() => { setPage(1) }, [cat])
+  useEffect(() => { setPage(1) }, [cat, samoProblemi])
+
+  const str = (v: any) => (v == null ? '' : String(v))
 
   function startEditMatch(m: any) {
     setEditMatch({
-      id: m.id, status: m.status,
+      id: m.id, status: m.status, origStatus: m.status,
       category: m.category, season: m.season,
-      home_sets: m.home_sets ?? '', away_sets: m.away_sets ?? '',
-      home_score: m.home_score ?? '', away_score: m.away_score ?? '',
+      home_team_id: m.home_team_id ?? '', away_team_id: m.away_team_id ?? '',
+      origHome: m.home_team_id, origAway: m.away_team_id,
       home_name: m.home_team?.name ?? 'Domaćin', away_name: m.away_team?.name ?? 'Gosti',
       match_date: m.match_date ?? '', match_time: m.match_time ?? '',
       venue: m.venue ?? '', redni_broj: m.redni_broj ?? '', round: m.round ?? '',
+    })
+    setEditSets(setoviUFormu(m.set_scores))
+    setEditUkupno({
+      home_sets: str(m.home_sets), away_sets: str(m.away_sets),
+      home_score: str(m.home_score), away_score: str(m.away_score),
     })
     // Popuni edit datum polja iz postojećeg datuma
     if (m.match_date) {
@@ -120,154 +245,36 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
       setEditMatch((m: any) => ({ ...m, match_time: `${hour.padStart(2,'0')}:${min.padStart(2,'0')}` }))
   }
 
-  // Mini kategorije igraju na 2 seta, ostale na 3
-  function isMini(category: string) {
-    return ['mini-muski','mini-zenske','razvojna mini'].includes(category)
-  }
-
-  // Bodovi: 3:0 ili 3:1 (2:0) → 3-0, 3:2 (2:1) → 2-1
-  function calcPoints(winningSets: number, losingSets: number) {
-    const diff = winningSets - losingSets
-    if (diff >= 2) return { winner: 3, loser: 0 }  // 3:0, 3:1, 2:0
-    return { winner: 2, loser: 1 }                  // 3:2, 2:1
-  }
-
-  async function autoRecalcStandings(category: string, season: string) {
-    // 1. Povuci sve finished utakmice za ovu kategoriju/sezonu
-    const { data: matches } = await supabase
-      .from('matches')
-      .select('home_team_id, away_team_id, home_sets, away_sets, home_score, away_score')
-      .eq('category', category)
-      .eq('season', season)
-      .eq('status', 'finished')
-    if (!matches || matches.length === 0) return
-
-    // 2. Prikupi sve timove koji ucestvuju
-    const teamIds = new Set<string>()
-    matches.forEach((m: any) => { teamIds.add(m.home_team_id); teamIds.add(m.away_team_id) })
-
-    // 3. Inicijalizuj statistiku za svaki tim
-    const stats: Record<string, {
-      played: number, won: number, lost: number,
-      sets_won: number, sets_lost: number,
-      points_won: number, points_lost: number, points: number
-    }> = {}
-    teamIds.forEach(id => {
-      stats[id] = { played:0, won:0, lost:0, sets_won:0, sets_lost:0, points_won:0, points_lost:0, points:0 }
-    })
-
-    // 4. Izracunaj statistiku iz utakmica
-    matches.forEach((m: any) => {
-      const hs = m.home_sets ?? 0
-      const as = m.away_sets ?? 0
-      const hp = m.home_score ?? 0
-      const ap = m.away_score ?? 0
-      if (hs === 0 && as === 0 && hp === 0 && ap === 0) return // nema rezultata
-
-      const pts = calcPoints(Math.max(hs, as), Math.min(hs, as))
-      const homeWon = hs > as
-
-      // Domaćin
-      stats[m.home_team_id].played++
-      stats[m.home_team_id].sets_won    += hs
-      stats[m.home_team_id].sets_lost   += as
-      stats[m.home_team_id].points_won  += hp
-      stats[m.home_team_id].points_lost += ap
-
-      // Gosti
-      stats[m.away_team_id].played++
-      stats[m.away_team_id].sets_won    += as
-      stats[m.away_team_id].sets_lost   += hs
-      stats[m.away_team_id].points_won  += ap
-      stats[m.away_team_id].points_lost += hp
-
-      // Pobeda/poraz i bodovi
-      if (homeWon) {
-        stats[m.home_team_id].won++
-        stats[m.home_team_id].points += pts.winner
-        stats[m.away_team_id].lost++
-        stats[m.away_team_id].points += pts.loser
-      } else {
-        stats[m.home_team_id].lost++
-        stats[m.home_team_id].points += pts.loser
-        stats[m.away_team_id].won++
-        stats[m.away_team_id].points += pts.winner
-      }
-    })
-
-    // 5. Sortiraj i odredi pozicije
-    const sorted = Object.entries(stats).sort(([, a], [, b]) => {
-      if (b.won !== a.won) return b.won - a.won
-      if (b.points !== a.points) return b.points - a.points
-      const setA = a.sets_lost > 0 ? a.sets_won / a.sets_lost : a.sets_won
-      const setB = b.sets_lost > 0 ? b.sets_won / b.sets_lost : b.sets_won
-      if (setB !== setA) return setB - setA
-      const pA = a.points_lost > 0 ? a.points_won / a.points_lost : a.points_won
-      const pB = b.points_lost > 0 ? b.points_won / b.points_lost : b.points_won
-      return pB - pA
-    })
-
-    // 6. Upsert standings za svaki tim
-    for (let i = 0; i < sorted.length; i++) {
-      const [team_id, s] = sorted[i]
-
-      // Proveri da li vec postoji red
-      const { data: existing } = await supabase
-        .from('standings')
-        .select('id')
-        .eq('team_id', team_id)
-        .eq('category', category)
-        .eq('season', season)
-        .maybeSingle()
-
-      const row = { team_id, category, season, position: i + 1, ...s }
-
-      if (existing?.id) {
-        await supabase.from('standings').update(row).eq('id', existing.id)
-      } else {
-        await supabase.from('standings').insert([row])
-      }
-    }
-  }
-
-  // async function recalculateAll() {
-  //   if (!confirm('Recalculate standings za SVE kategorije i sezone?')) return
-  //   setEditBusy(true)
-  //   // Povuci sve unique kombinacije kategorija i sezona iz finished utakmica
-  //   const { data: combos } = await supabase
-  //     .from('matches')
-  //     .select('category, season')
-  //     .eq('status', 'finished')
-  //   if (combos) {
-  //     const unique = Array.from(new Set(combos.map((c: any) => `${c.category}|||${c.season}`)))
-  //       .map(s => { const [cat, sea] = s.split('|||'); return { category: cat, season: sea } })
-  //     for (const { category, season } of unique) {
-  //       await autoRecalcStandings(category, season)
-  //     }
-  //     alert(`Završeno! Ažurirano ${unique.length} kategorija.`)
-  //   }
-  //   setEditBusy(false); onRefresh()
-  // }
-
   async function saveEditMatch() {
-    if (!editMatch) return; setEditBusy(true)
-    const payload: any = {
-      status:     editMatch.status,
-      match_date: editMatch.match_date || null,
-      match_time: editMatch.match_time || null,
-      venue:      editMatch.venue      || null,
-      redni_broj: editMatch.redni_broj || null,
-      round:      editMatch.round      || null,
-      home_sets:  editMatch.home_sets  !== '' ? parseInt(editMatch.home_sets)  : null,
-      away_sets:  editMatch.away_sets  !== '' ? parseInt(editMatch.away_sets)  : null,
-      home_score: editMatch.home_score !== '' ? parseInt(editMatch.home_score) : null,
-      away_score: editMatch.away_score !== '' ? parseInt(editMatch.away_score) : null,
-    }
-    await supabase.from('matches').update(payload).eq('id', editMatch.id)
+    if (!editMatch) return
+    const em = editMatch
+    if (!em.home_team_id || !em.away_team_id) { alert('Izaberi domaćina i goste.'); return }
+    if (em.home_team_id === em.away_team_id) { alert('Domaćin i gosti ne mogu biti isti tim.'); return }
+    const { rezultat, greska } = rezultatIzForme(editSets, editUkupno, em.category, em.status)
+    if (greska) { alert(greska); return }
+    if (em.status === 'finished' && bezRezultata(rezultat) &&
+        !confirm('Utakmica je označena kao „Završeno“, ali nema upisan rezultat. Sačuvati ipak?')) return
 
-    // Automatski recalc standings ako je utakmica finished
-    if (editMatch.status === 'finished') {
-      await autoRecalcStandings(editMatch.category, editMatch.season)
+    setEditBusy(true)
+    const payload: any = {
+      status:       em.status,
+      home_team_id: em.home_team_id,
+      away_team_id: em.away_team_id,
+      match_date:   em.match_date || null,
+      match_time:   em.match_time || null,
+      venue:        em.venue      || null,
+      redni_broj:   em.redni_broj || null,
+      round:        em.round      || null,
+      ...rezultat,
+    }
+    const err = await upisiUtakmicu(p => supabase.from('matches').update(p).eq('id', em.id), payload)
+    if (err) { setEditBusy(false); alert('Izmene nisu sačuvane: ' + err); return }
+
+    // Tabela se preračunava kad je utakmica završena (ili je bila završena pre izmene)
+    if (em.status === 'finished' || em.origStatus === 'finished') {
+      const r = await recalcStandings(supabase, em.category, em.season,
+        { touched: [em.origHome, em.origAway, em.home_team_id, em.away_team_id] })
+      if (r.error) alert('Izmene su sačuvane, ali tabela nije preračunata: ' + r.error)
     }
 
     setEditMatch(null); setEditBusy(false); onRefresh()
@@ -282,11 +289,33 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
     postponed: { text: 'Odloženo', cls: 'text-yellow-400' },
   }[s] ?? { text: s, cls: 'text-blue-300' })
 
+  // Utakmice sa timom iz druge kategorije — zbog njih se klub u tabeli pojavljuje dva puta
+  const problemi = (matches ?? []).filter((m: any) =>
+    pogresnaKat(m.home_team_id, m.category) || pogresnaKat(m.away_team_id, m.category) ||
+    (m.home_team_id && m.home_team_id === m.away_team_id))
+  const prikaz = samoProblemi && problemi.length ? problemi : matches
+
   // Razvrstavanje po kategorijama
   const groups = groupByCategory<any>(matches, m => m.category)
-  const shown = cat === SVE ? groups : groups.filter(g => g.value === cat)
+  const shownGroups = groupByCategory<any>(prikaz, m => m.category)
+  const shown = cat === SVE ? shownGroups : shownGroups.filter(g => g.value === cat)
 
   const headers = ['KOLO', 'DATUM', 'VREME', 'DOMAĆIN', 'RES.', 'GOSTI', 'STATUS', ...(isReviewer ? [] : [''])]
+
+  function nazivSaUpozorenjem(name: string | undefined, teamId: string, category: string) {
+    const kat = pogresnaKat(teamId, category)
+    return (
+      <>
+        {name ?? '—'}
+        {kat && (
+          <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] font-normal text-amber-300 align-middle"
+            title={`Tim je iz kategorije ${katLabel(kat)}, a utakmica je u kategoriji ${katLabel(category)}`}>
+            <AlertTriangle className="w-3 h-3" /> {katLabel(kat)}
+          </span>
+        )}
+      </>
+    )
+  }
 
   function renderTable(rows: any[]) {
     return (
@@ -298,22 +327,29 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
           <tbody>
             {rows.map((m: any) => {
               const st = statusLabel(m.status)
+              const setovi = formatSetova(m.set_scores)
+              const imaRez = m.status === 'finished' || m.status === 'live'
               return (
                 <tr key={m.id} className={`border-t border-white/5 tr-hover text-sm ${editMatch?.id === m.id ? 'bg-blue-900/20' : ''}`}>
                   <td className="px-3 py-2.5 text-blue-400 text-xs text-center">{m.round || '—'}</td>
                   <td className="px-3 py-2.5 text-blue-200 font-semibold whitespace-nowrap">{fmtDate(m.match_date)}</td>
                   <td className="px-3 py-2.5 text-blue-200 whitespace-nowrap">{fmtTime(m.match_time) || <span className="text-blue-600">—</span>}</td>
-                  <td className="px-3 py-2.5 text-white font-semibold">{m.home_team?.name}</td>
-                  <td className="px-3 py-2.5 text-center font-display text-[#f5c518]">
-                    {(m.status==='finished'||m.status==='live') ? `${m.home_sets}:${m.away_sets}` : '—'}
+                  <td className="px-3 py-2.5 text-white font-semibold">{nazivSaUpozorenjem(m.home_team?.name, m.home_team_id, m.category)}</td>
+                  <td className="px-3 py-2.5 text-center">
+                    <div className="font-display text-[#f5c518]">
+                      {imaRez ? `${m.home_sets ?? 0}:${m.away_sets ?? 0}` : '—'}
+                    </div>
+                    {imaRez && setovi && (
+                      <div className="text-[10px] text-blue-400 whitespace-nowrap leading-tight mt-0.5">{setovi}</div>
+                    )}
                   </td>
-                  <td className="px-3 py-2.5 text-white font-semibold">{m.away_team?.name}</td>
+                  <td className="px-3 py-2.5 text-white font-semibold">{nazivSaUpozorenjem(m.away_team?.name, m.away_team_id, m.category)}</td>
                   <td className={`px-3 py-2.5 text-xs ${st.cls}`}>{st.text}</td>
                   {!isReviewer && (
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-1 justify-end">
                         <button onClick={() => startEditMatch(m)} className="text-blue-400 hover:text-[#f5c518] p-1 transition-colors" title="Uredi"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => del(m.id)} className="text-red-400 hover:text-red-300 p-1 transition-colors" title="Obriši"><Trash2 className="w-4 h-4" /></button>
+                        <button onClick={() => del(m)} className="text-red-400 hover:text-red-300 p-1 transition-colors" title="Obriši"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     </td>
                   )}
@@ -372,6 +408,38 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
     )
   }
 
+  // Izbor tima (domaćin/gosti): samo timovi iz kategorije utakmice, sa nazivom kategorije.
+  // Ako postojeća utakmica ima tim iz druge kategorije, on se prikazuje sa ⚠ da bi mogao da se zameni.
+  function izborTima(category: string, value: string, drugi: string, onChange: (id: string) => void, prazno: string) {
+    const lista = timoviZa(category)
+    const trenutni = value && !lista.some((t: any) => t.id === value) ? teamById.get(value) : null
+    return (
+      <select className="field-input" value={value} onChange={e => onChange(e.target.value)}
+        disabled={!lista.length && !trenutni} required>
+        <option value="">{lista.length ? prazno : '— nema timova u ovoj kategoriji —'}</option>
+        {trenutni && <option value={trenutni.id}>⚠ {teamLabel(trenutni)}</option>}
+        {lista.map((t: any) => (
+          <option key={t.id} value={t.id} disabled={t.id === drugi}>{teamLabel(t)}</option>
+        ))}
+      </select>
+    )
+  }
+
+  const nemaTimova = (category: string) => timoviZa(category).length === 0 && (
+    <p className="sm:col-span-2 md:col-span-3 -mt-1 text-xs text-amber-300">
+      U kategoriji {katLabel(category)} još nema timova. Dodaj ih u tabu TIMOVI (izaberi klub i kategoriju), pa se vrati ovde.
+    </p>
+  )
+
+  const upozorenjeTima = (teamId: string, category: string, uloga: string) => {
+    const kat = pogresnaKat(teamId, category)
+    return kat ? (
+      <p className="mt-1 text-xs text-amber-300">
+        ⚠ {uloga} je tim iz kategorije {katLabel(kat)}. Izaberi tim iz kategorije {katLabel(category)}.
+      </p>
+    ) : null
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -381,10 +449,6 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
         </div>
         {!isReviewer && (
           <div className="flex gap-2">
-            {/* <button onClick={recalculateAll} disabled={editBusy}
-              className="border border-[#f5c518]/40 text-[#f5c518] px-4 py-2 rounded-lg text-sm font-display tracking-wide hover:bg-[#f5c518]/10 transition-colors">
-              ↻ RECALCULATE SVE
-            </button> */}
             <button onClick={toggleAdd} className="btn-yellow"><Plus className="w-4 h-4" /> DODAJ UTAKMICU</button>
           </div>
         )}
@@ -392,31 +456,46 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
 
       <KategorijaFilter groups={groups} total={matches.length} active={cat} onChange={setCat} />
 
+      {/* Upozorenje: utakmice sa timom iz druge kategorije */}
+      {problemi.length > 0 && !isReviewer && (
+        <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-amber-200 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            <span>
+              Utakmica sa timom iz pogrešne kategorije: <b>{problemi.length}</b>. Zbog njih se isti klub u tabeli pojavljuje dva puta.
+              Otvori utakmicu (olovka) i izaberi tim iz prave kategorije.
+            </span>
+          </p>
+          <button onClick={() => setSamoProblemi(v => !v)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-400/40 text-amber-200 hover:bg-amber-400/10 transition-colors">
+            {samoProblemi ? 'Prikaži sve utakmice' : 'Prikaži samo njih'}
+          </button>
+        </div>
+      )}
+
       {/* FORMA ZA NOVU UTAKMICU */}
       {open && !isReviewer && (
         <form onSubmit={add} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/30">
-          <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-4">NOVA UTAKMICA</h3>
+          <h3 className="font-display text-xl text-[#f5c518] tracking-wider mb-1">NOVA UTAKMICA</h3>
+          <p className="text-xs text-blue-400 mb-4">Prvo izaberi kategoriju — za domaćina i goste nude se samo timovi iz te kategorije.</p>
           <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
             <div>
-              <label className="label">Domaćin *</label>
-              <select className="field-input" value={form.home_team_id} onChange={e => setForm({...form, home_team_id: e.target.value})} required>
-                <option value="">— Domaćin —</option>
-                {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Gosti *</label>
-              <select className="field-input" value={form.away_team_id} onChange={e => setForm({...form, away_team_id: e.target.value})} required>
-                <option value="">— Gosti —</option>
-                {teams.map((t: any) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="label">Kategorija *</label>
-              <select className="field-input" value={form.category} onChange={e => setForm({...form, category: e.target.value})}>
+              <select className="field-input" value={form.category} onChange={e => promeniKategoriju(e.target.value)}>
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
             </div>
+            <div>
+              <label className="label">Domaćin *</label>
+              {izborTima(form.category, form.home_team_id, form.away_team_id,
+                id => setForm(f => ({ ...f, home_team_id: id })), '— Domaćin —')}
+            </div>
+            <div>
+              <label className="label">Gosti *</label>
+              {izborTima(form.category, form.away_team_id, form.home_team_id,
+                id => setForm(f => ({ ...f, away_team_id: id })), '— Gosti —')}
+            </div>
+            {nemaTimova(form.category)}
             <div>
               <label className="label">Datum * (DD / MM / YYYY)</label>
               <div className="flex gap-2">
@@ -425,7 +504,6 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
                 <input type="number" min="2020" max="2035" placeholder="YYYY" className="field-input text-center" style={{flex:1}} value={dateYear} onChange={e => updateDate(dateDay,dateMonth,e.target.value)} />
               </div>
               {form.match_date && <p className="text-xs text-[#f5c518] mt-1">✓ {fmtDate(form.match_date)}</p>}
-              <input type="hidden" value={form.match_date} required />
             </div>
             <div>
               <label className="label">Vreme (24h)</label>
@@ -463,16 +541,23 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
               <label className="label">Kolo</label>
               <input type="number" min="1" className="field-input" placeholder="pr. 3" value={form.round} onChange={e => setForm({...form, round: e.target.value})} />
             </div>
-            {showScore && <>
-              <div><label className="label">Setovi — Domaćin</label><input type="number" min="0" max="3" className="field-input" value={form.home_sets} onChange={e => setForm({...form, home_sets: e.target.value})} /></div>
-              <div><label className="label">Setovi — Gosti</label><input type="number" min="0" max="3" className="field-input" value={form.away_sets} onChange={e => setForm({...form, away_sets: e.target.value})} /></div>
-              <div><label className="label">Poeni — Domaćin</label><input type="number" min="0" className="field-input" value={form.home_score} onChange={e => setForm({...form, home_score: e.target.value})} /></div>
-              <div><label className="label">Poeni — Gosti</label><input type="number" min="0" className="field-input" value={form.away_score} onChange={e => setForm({...form, away_score: e.target.value})} /></div>
-            </>}
+            {showScore && (
+              <div className="sm:col-span-2 md:col-span-3">
+                <SetoviUnos
+                  category={form.category} status={form.status}
+                  homeName={imeTima(form.home_team_id, 'Domaćin')} awayName={imeTima(form.away_team_id, 'Gosti')}
+                  sets={formSets} onSets={setFormSets} ukupno={formUkupno} onUkupno={setFormUkupno} />
+              </div>
+            )}
           </div>
-          <div className="flex gap-2 mt-5">
+          {poruka && <p className="mt-4 text-sm text-green-300">{poruka}</p>}
+          <div className="flex flex-wrap gap-2 mt-5">
             <button type="submit" disabled={busy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ</button>
-            <button type="button" onClick={() => setOpen(false)} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
+            <button type="submit" disabled={busy} data-sledeca="1" className="btn-ghost"
+              title="Sačuvaj, a kategorija, datum, kolo i teren ostaju za sledeću utakmicu">
+              <Plus className="w-4 h-4" /> Sačuvaj i dodaj sledeću
+            </button>
+            <button type="button" onClick={() => { setOpen(false); setPoruka('') }} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
           </div>
         </form>
       )}
@@ -482,12 +567,12 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
         <div ref={editRef} className="glass rounded-2xl p-6 mb-6 border border-[#f5c518]/40 scroll-mt-32">
           <h3 className="font-display text-xl text-white tracking-wider mb-1">UREDI UTAKMICU</h3>
           <p className="text-sm text-blue-300 mb-5 font-semibold">
-            {editMatch.home_name} <span className="text-[#f5c518] mx-2">VS</span> {editMatch.away_name}
+            {imeTima(editMatch.home_team_id, editMatch.home_name)} <span className="text-[#f5c518] mx-2">VS</span> {imeTima(editMatch.away_team_id, editMatch.away_name)}
             <span className="ml-3 text-xs text-blue-400 font-normal">{katLabel(editMatch.category)}</span>
           </p>
 
-          {/* Rezultat */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+          {/* Status i timovi */}
+          <div className="grid sm:grid-cols-3 gap-4 mb-4">
             <div>
               <label className="label">Status</label>
               <select className="field-input" value={editMatch.status} onChange={e => setEditMatch((m: any) => ({...m, status: e.target.value}))}>
@@ -498,27 +583,27 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
               </select>
             </div>
             <div>
-              <label className="label">Setovi — Dom.</label>
-              <input type="number" min="0" max="3" className="field-input text-center text-lg font-display" value={editMatch.home_sets} onChange={e => setEditMatch((m: any) => ({...m, home_sets: e.target.value}))} />
+              <label className="label">Domaćin</label>
+              {izborTima(editMatch.category, editMatch.home_team_id, editMatch.away_team_id,
+                id => setEditMatch((m: any) => ({ ...m, home_team_id: id })), '— Domaćin —')}
+              {upozorenjeTima(editMatch.home_team_id, editMatch.category, 'Domaćin')}
             </div>
             <div>
-              <label className="label">Setovi — Gosti</label>
-              <input type="number" min="0" max="3" className="field-input text-center text-lg font-display" value={editMatch.away_sets} onChange={e => setEditMatch((m: any) => ({...m, away_sets: e.target.value}))} />
+              <label className="label">Gosti</label>
+              {izborTima(editMatch.category, editMatch.away_team_id, editMatch.home_team_id,
+                id => setEditMatch((m: any) => ({ ...m, away_team_id: id })), '— Gosti —')}
+              {upozorenjeTima(editMatch.away_team_id, editMatch.category, 'Gost')}
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4 mb-4">
-            <div><label className="label">Poeni — {editMatch.home_name}</label><input type="number" min="0" className="field-input" value={editMatch.home_score} onChange={e => setEditMatch((m: any) => ({...m, home_score: e.target.value}))} /></div>
-            <div><label className="label">Poeni — {editMatch.away_name}</label><input type="number" min="0" className="field-input" value={editMatch.away_score} onChange={e => setEditMatch((m: any) => ({...m, away_score: e.target.value}))} /></div>
           </div>
 
-          {/* Preview */}
-          {editMatch.home_sets !== '' && editMatch.away_sets !== '' && (
-            <div className="flex items-center justify-center gap-6 bg-[#002d63]/60 rounded-xl py-4 mb-4">
-              <span className="text-white font-semibold text-sm">{editMatch.home_name}</span>
-              <span className="font-display text-4xl text-[#f5c518]">{editMatch.home_sets} : {editMatch.away_sets}</span>
-              <span className="text-white font-semibold text-sm">{editMatch.away_name}</span>
-            </div>
-          )}
+          {/* Rezultat po setovima */}
+          <div className="mb-4">
+            <SetoviUnos
+              category={editMatch.category} status={editMatch.status}
+              homeName={imeTima(editMatch.home_team_id, editMatch.home_name)}
+              awayName={imeTima(editMatch.away_team_id, editMatch.away_name)}
+              sets={editSets} onSets={setEditSets} ukupno={editUkupno} onUkupno={setEditUkupno} />
+          </div>
 
           {/* Izmena datuma i vremena */}
           <div className="border-t border-white/10 pt-4 mt-2">
@@ -563,7 +648,7 @@ export default function UtakmiceTab({ matches, teams, supabase, onRefresh, aktiv
           </div>
 
           <div className="flex gap-2 mt-5">
-            <button onClick={saveEditMatch} disabled={editBusy} className="btn-yellow"><Save className="w-4 h-4" /> SAČUVAJ SVE</button>
+            <button onClick={saveEditMatch} disabled={editBusy} className="btn-yellow"><Save className="w-4 h-4" /> {editBusy ? 'ČUVANJE...' : 'SAČUVAJ SVE'}</button>
             <button onClick={() => setEditMatch(null)} className="btn-ghost"><X className="w-4 h-4" /> Odustani</button>
           </div>
         </div>

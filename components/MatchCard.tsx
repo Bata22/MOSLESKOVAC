@@ -1,4 +1,5 @@
 import { Match } from '@/lib/types'
+import { normalizujSetove } from '@/lib/setovi'
 import { Calendar, Clock, MapPin } from 'lucide-react'
 
 export default function MatchCard({ match }: { match: Match }) {
@@ -27,6 +28,7 @@ export default function MatchCard({ match }: { match: Match }) {
   const homeWin   = showScore && (match.home_sets ?? 0) > (match.away_sets ?? 0)
   const awayWin   = showScore && (match.away_sets ?? 0) > (match.home_sets ?? 0)
   const time      = fmtTime(match.match_time)
+  const setovi    = showScore ? normalizujSetove(match.set_scores) : []
 
   return (
     <div className="glass card-hover rounded-2xl overflow-hidden">
@@ -69,7 +71,7 @@ export default function MatchCard({ match }: { match: Match }) {
                   <span className="text-blue-500 mx-1">:</span>
                   <span className={awayWin ? 'text-[#f5c518]' : 'text-white'}>{match.away_sets ?? 0}</span>
                 </div>
-                {match.home_score !== undefined && (
+                {match.home_score != null && match.away_score != null && (
                   <div className="text-[11px] text-blue-400 mt-0.5">
                     ({match.home_score} : {match.away_score})
                   </div>
@@ -90,6 +92,20 @@ export default function MatchCard({ match }: { match: Match }) {
             </p>
           </div>
         </div>
+
+        {/* rezultat po setovima */}
+        {setovi.length > 0 && (
+          <div className="mt-3 flex justify-center flex-wrap gap-1.5">
+            {setovi.map((st, i) => (
+              <span key={i} title={`${i + 1}. set`}
+                className="text-[11px] font-semibold px-2 py-0.5 rounded bg-[#003f8a]/30 border border-[#003f8a]/50 text-blue-200">
+                <span className={st.home > st.away ? 'text-[#f5c518]' : ''}>{st.home}</span>
+                <span className="text-blue-500">:</span>
+                <span className={st.away > st.home ? 'text-[#f5c518]' : ''}>{st.away}</span>
+              </span>
+            ))}
+          </div>
+        )}
 
         {/* venue / round / redni broj */}
         {(match.venue || match.round || match.redni_broj) && (

@@ -1,6 +1,7 @@
 // Zajednički bilten: koristi ga admin panel (generator + štampa) i javna stranica /bilteni/[id].
 // Bez 'use client' — radi i u server i u client komponentama.
 
+import { Fragment, type ReactNode } from 'react'
 import { CATEGORIES } from '@/lib/types'
 
 /* ══════════════════════════════════════════
@@ -19,18 +20,41 @@ export type MatchRow = {
   away: string
   home_sets: string
   away_sets: string
+  sets?: string // rezultat po setovima, npr. "25:20, 23:25, 25:18" (stari bilteni ga nemaju)
 }
 
-export type Selection = { category: string; season: string; kolo: string }
+export type MatchKey = Exclude<keyof MatchRow, 'uid'>
 
-// Snimak biltena — čuva se u koloni `meta` tabele bilteni
-export type Snapshot = Selection & {
-  v: 1
+// Jedna kategorija u biltenu: tabela + rezultati
+export type Section = {
+  uid: string
+  category: string
+  standings: Row[]
+  matches: MatchRow[]
+}
+
+// Izbor iz generatora: kategorije, sezona i filter utakmica (kolo i/ili period)
+export type Selection = {
+  categories: string[]
+  season: string
+  kolo: string
+  dateFrom: string
+  dateTo: string
+}
+
+// Snimak biltena — čuva se u koloni `meta` tabele bilteni.
+// v2: više kategorija (sekcije). Stari v1 (jedna kategorija) se pri čitanju pretvara u v2.
+export type Snapshot = {
+  v: 2
+  season: string
+  kolo: string
+  dateFrom: string
+  dateTo: string
   title: string
   note: string
   issued: string
-  standings: Row[]
-  matches: MatchRow[]
+  newPage: boolean // svaka kategorija na novoj strani
+  sections: Section[]
 }
 
 export type Col =
@@ -77,21 +101,66 @@ export function fmtIssued(iso?: string | null) {
   return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()}.`
 }
 
+// Period odigravanja: "01.11.–07.11.2026.", "od 01.11.2026.", "do 07.11.2026."
+export function fmtPeriod(from?: string | null, to?: string | null) {
+  const f = fmtDate(from)
+  const t = fmtDate(to)
+  if (f && t) {
+    if (from === to) return t
+    return from!.slice(0, 4) === to!.slice(0, 4) ? `${f.slice(0, 6)}–${t}` : `${f}–${t}`
+  }
+  if (f) return `od ${f}`
+  if (t) return `do ${t}`
+  return ''
+}
+
+// Nazivi kategorija u biltenu, npr. "Seniori, Kadeti"
+export const snapCategories = (s: Snapshot) => s.sections.map(x => catLabel(x.category)).join(', ')
+
+const str = (v: unknown) => (typeof v === 'string' ? v : v == null ? '' : String(v))
+const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : [])
+
+function toSection(x: any, i: number): Section {
+  return {
+    uid: str(x?.uid) || `s${i}`,
+    category: str(x?.category),
+    standings: arr<Row>(x?.standings),
+    matches: arr<MatchRow>(x?.matches),
+  }
+}
+
 export function parseSnapshot(meta: unknown): Snapshot | null {
   if (!meta) return null
   try {
-    const s = typeof meta === 'string' ? JSON.parse(meta) : meta
-    if (s && Array.isArray(s.standings) && Array.isArray(s.matches)) return s as Snapshot
+    const s: any = typeof meta === 'string' ? JSON.parse(meta) : meta
+    if (!s || typeof s !== 'object') return null
+    const base = {
+      v: 2 as const,
+      season: str(s.season), kolo: str(s.kolo),
+      dateFrom: str(s.dateFrom), dateTo: str(s.dateTo),
+      title: str(s.title), note: str(s.note), issued: str(s.issued),
+      newPage: !!s.newPage,
+    }
+    // v2 — više kategorija
+    if (Array.isArray(s.sections)) return { ...base, sections: s.sections.map(toSection) }
+    // v1 — jedna kategorija (stari bilteni)
+    if (Array.isArray(s.standings) && Array.isArray(s.matches))
+      return { ...base, sections: [toSection(s, 0)] }
   } catch {}
   return null
 }
 
 // Naziv PDF fajla koji browser predloži pri "Sačuvaj kao PDF"
 export function pdfName(s: Snapshot) {
-  return [s.title || 'Bilten', catLabel(s.category), s.season]
+  const parts = [s.title || 'Bilten']
+  if (s.sections.length === 1) parts.push(catLabel(s.sections[0].category))
+  parts.push(fmtPeriod(s.dateFrom, s.dateTo) || s.season)
+  return parts
+    .filter(Boolean)
     .join(' - ')
     .replace(/[\\/:*?"<>|]+/g, '-')
     .replace(/\s+/g, ' ')
+    .replace(/[.\s]+$/, '')
     .trim()
 }
 
@@ -99,93 +168,126 @@ export function pdfName(s: Snapshot) {
    DOKUMENT (po šablonu index.html, sa logom sajta)
 ══════════════════════════════════════════ */
 
+function SectionView({ sec, kolo }: { sec: Section; kolo: string }) {
+  const cat = catLabel(sec.category)
+  const imaSetove = sec.matches.some(m => str(m.sets).trim() !== '')
+  return (
+    <>
+      <h3>{cat} - Tabela</h3>
+      <table className="bp-table">
+        <thead>
+          <tr>
+            <th>Poz</th>
+            <th>Naziv kluba</th>
+            {COLS.map(c => <th key={c.label}>{c.label}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {sec.standings.length === 0 && (
+            <tr><td colSpan={12} className="empty">Tabela je prazna.</td></tr>
+          )}
+          {sec.standings.map((r, i) => (
+            <tr key={r.uid || i}>
+              <td>{i + 1}</td>
+              <td className="l">{r.team}</td>
+              {COLS.map(c => (
+                <td key={c.label}>{c.kind === 'num' ? r[c.key] : koef(r[c.plus], r[c.minus])}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {sec.matches.length > 0 && (
+        <>
+          <h3>{cat} - Rezultati{kolo ? ` (${kolo}. kolo)` : ''}</h3>
+          <table className="bp-table">
+            <thead>
+              <tr>
+                <th>Kolo</th><th>Datum</th><th>Domaćin</th><th>Rezultat</th><th>Gost</th>
+                {imaSetove && <th>Po setovima</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {sec.matches.map((m, i) => (
+                <tr key={m.uid || i}>
+                  <td>{m.round || '—'}</td>
+                  <td className="d">{fmtDate(m.date) || '—'}</td>
+                  <td className="l">{m.home}</td>
+                  <td className="res">
+                    {m.home_sets !== '' && m.away_sets !== '' ? `${m.home_sets} : ${m.away_sets}` : '—'}
+                  </td>
+                  <td className="l">{m.away}</td>
+                  {imaSetove && <td className="sets">{str(m.sets)}</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+    </>
+  )
+}
+
 export function BiltenDocument({ snap }: { snap: Snapshot }) {
-  const cat = catLabel(snap.category)
-  const sub = [snap.title, `Sezona ${snap.season}`, snap.kolo ? `${snap.kolo}. kolo` : '']
-    .filter(Boolean).join(' · ')
+  const sub = [
+    snap.title,
+    snap.season ? `Sezona ${snap.season}` : '',
+    snap.kolo ? `${snap.kolo}. kolo` : '',
+    fmtPeriod(snap.dateFrom, snap.dateTo),
+  ].filter(Boolean).join(' · ')
+
+  const header = (
+    <div className="bp-header">
+      <div className="bp-logo"><img src={LOGO_SRC} alt="MOS Leskovac" /></div>
+      <div className="bp-title">
+        <h1>Međuokružni odbojkaški savez Leskovac</h1>
+        <h2>Zvanični Bilten Takmičenja</h2>
+        <p>{sub}</p>
+      </div>
+      <div className="bp-logo" />
+    </div>
+  )
+
+  const end = (
+    <>
+      {snap.note && (
+        <>
+          <h3>Napomena</h3>
+          <p className="bp-note">{snap.note}</p>
+        </>
+      )}
+      <div className="bp-footer">
+        <span>Leskovac, {fmtIssued(snap.issued)}</span>
+        <span>Međuokružni odbojkaški savez Leskovac · mosleskovac.vercel.app</span>
+      </div>
+    </>
+  )
+
+  const sections = snap.sections.map(sec => <SectionView key={sec.uid} sec={sec} kolo={snap.kolo} />)
+
+  // Strane: sve redom, ili svaka kategorija na novoj strani
+  const pages: ReactNode[][] = snap.newPage && sections.length > 1
+    ? sections.map((s, i) => [i === 0 ? header : null, s, i === sections.length - 1 ? end : null])
+    : [[header, ...sections, end]]
 
   return (
-    // Spoljna tabela: thead/tfoot se ponavljaju na svakoj strani i daju gornju/donju marginu
-    <table className="bilten-doc">
-      <thead><tr><td><div className="bp-space" /></td></tr></thead>
-      <tfoot><tr><td><div className="bp-space" /></td></tr></tfoot>
-      <tbody>
-        <tr>
-          <td>
-            <div className="bp-header">
-              <div className="bp-logo"><img src={LOGO_SRC} alt="MOS Leskovac" /></div>
-              <div className="bp-title">
-                <h1>Međuokružni odbojkaški savez Leskovac</h1>
-                <h2>Zvanični Bilten Takmičenja</h2>
-                <p>{sub}</p>
-              </div>
-              <div className="bp-logo" />
-            </div>
-
-            <h3>{cat} - Tabela</h3>
-            <table className="bp-table">
-              <thead>
-                <tr>
-                  <th>Poz</th>
-                  <th>Naziv kluba</th>
-                  {COLS.map(c => <th key={c.label}>{c.label}</th>)}
-                </tr>
-              </thead>
-              <tbody>
-                {snap.standings.length === 0 && (
-                  <tr><td colSpan={12} className="empty">Tabela je prazna.</td></tr>
-                )}
-                {snap.standings.map((r, i) => (
-                  <tr key={r.uid || i}>
-                    <td>{i + 1}</td>
-                    <td className="l">{r.team}</td>
-                    {COLS.map(c => (
-                      <td key={c.label}>{c.kind === 'num' ? r[c.key] : koef(r[c.plus], r[c.minus])}</td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {snap.matches.length > 0 && (
-              <>
-                <h3>{cat} - Rezultati{snap.kolo ? ` (${snap.kolo}. kolo)` : ''}</h3>
-                <table className="bp-table">
-                  <thead>
-                    <tr><th>Kolo</th><th>Datum</th><th>Domaćin</th><th>Rezultat</th><th>Gost</th></tr>
-                  </thead>
-                  <tbody>
-                    {snap.matches.map((m, i) => (
-                      <tr key={m.uid || i}>
-                        <td>{m.round || '—'}</td>
-                        <td>{fmtDate(m.date) || '—'}</td>
-                        <td className="l">{m.home}</td>
-                        <td className="res">
-                          {m.home_sets !== '' && m.away_sets !== '' ? `${m.home_sets} : ${m.away_sets}` : '—'}
-                        </td>
-                        <td className="l">{m.away}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {snap.note && (
-              <>
-                <h3>Napomena</h3>
-                <p className="bp-note">{snap.note}</p>
-              </>
-            )}
-
-            <div className="bp-footer">
-              <span>Leskovac, {fmtIssued(snap.issued)}</span>
-              <span>Međuokružni odbojkaški savez Leskovac · mosleskovac.vercel.app</span>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <>
+      {pages.map((content, p) => (
+        // Spoljna tabela: thead/tfoot se ponavljaju na svakoj strani i daju gornju/donju marginu
+        <table key={p} className={`bilten-doc${p > 0 ? ' bp-break' : ''}`}>
+          <thead><tr><td><div className="bp-space" /></td></tr></thead>
+          <tfoot><tr><td><div className="bp-space" /></td></tr></tfoot>
+          <tbody>
+            <tr>
+              <td>
+                {content.map((c, i) => <Fragment key={i}>{c}</Fragment>)}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      ))}
+    </>
   )
 }
 
@@ -197,6 +299,8 @@ export const BILTEN_DOC_CSS = `
 .bilten-doc > tfoot > tr > td,
 .bilten-doc > tbody > tr > td { padding: 0 12mm; border: 0; text-align: left; vertical-align: top; }
 .bilten-doc .bp-space { height: 12mm; }
+.bilten-doc.bp-break { break-before: page; page-break-before: always; }
+@media screen { .bilten-doc.bp-break { border-top: 2px dashed #c9d1dc; } }
 .bilten-doc .bp-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #003366; padding-bottom: 15px; margin-bottom: 20px; }
 .bilten-doc .bp-logo { width: 90px; height: 90px; flex: 0 0 90px; }
 .bilten-doc .bp-logo img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -212,7 +316,9 @@ export const BILTEN_DOC_CSS = `
 .bilten-doc .bp-table td { border: 1px solid #d1d5db; padding: 8px; text-align: center; }
 .bilten-doc .bp-table th { background-color: #e9ecef; color: #003366; font-weight: bold; white-space: nowrap; }
 .bilten-doc .bp-table td.l { text-align: left; font-weight: bold; }
+.bilten-doc .bp-table td.d { white-space: nowrap; }
 .bilten-doc .bp-table td.res { font-weight: bold; color: #003366; white-space: nowrap; }
+.bilten-doc .bp-table td.sets { font-size: 0.8rem; color: #444; }
 .bilten-doc .bp-table td.empty { color: #777; }
 .bilten-doc .bp-note { margin: 0 0 20px; white-space: pre-wrap; font-size: 0.9rem; line-height: 1.5; }
 .bilten-doc .bp-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 24px; padding-top: 8px; border-top: 1px solid #ddd; font-size: 0.75rem; color: #777; break-inside: avoid; }

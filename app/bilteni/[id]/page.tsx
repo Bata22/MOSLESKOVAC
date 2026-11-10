@@ -5,7 +5,7 @@ import { cache } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import Navbar from '@/components/Navbar'
 import { createClient } from '@/lib/supabase/server'
-import { BiltenDocument, BILTEN_DOC_CSS, catLabel, parseSnapshot, pdfName } from '@/components/bilten/BiltenDocument'
+import { BiltenDocument, BILTEN_DOC_CSS, parseSnapshot, pdfName, snapCategories } from '@/components/bilten/BiltenDocument'
 import PrintButton from '@/components/bilten/PrintButton'
 
 type Props = { params: { id: string } }
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!b || !snap) return { title: 'Bilten — MOSL' }
   return {
     title: pdfName(snap),
-    description: `${b.naziv} — ${catLabel(snap.category)}, sezona ${snap.season}`,
+    description: `${b.naziv} — ${snapCategories(snap)}, sezona ${snap.season}`,
   }
 }
 

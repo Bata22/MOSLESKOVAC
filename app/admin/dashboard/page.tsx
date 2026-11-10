@@ -118,7 +118,7 @@ export default function Dashboard() {
         {tab === 'klubovi'  && <KluboviTab  supabase={supabase} teams={teams} isReviewer = {isReviewer} />}
         {tab === 'treneri'  && <TreneriTab  supabase={supabase} isReviewer = {isReviewer} />}
         {tab === 'sudije'   && <SudijeTab   supabase={supabase} isReviewer = {isReviewer} />}
-        {tab === 'bilteni'  && <BilteniTab  supabase={supabase} isReviewer = {isReviewer} />}
+        {tab === 'bilteni'  && <BilteniTab  supabase={supabase} isReviewer = {isReviewer} aktivnaSezona={aktivnaSezona} />}
       </div>
     </div>
   )

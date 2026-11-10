@@ -2,15 +2,18 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { createPortal, flushSync } from 'react-dom'
-import { CATEGORIES, SEASONS } from '@/lib/types'
+import { SEASONS } from '@/lib/types'
 import {
-  ArrowDown, ArrowUp, Download, Edit2, ExternalLink, FileText, Plus, Printer, RefreshCw, Save, Trash2, Upload, X,
+  ArrowDown, ArrowUp, ChevronDown, Download, Edit2, ExternalLink, FileText, Plus, Printer, RefreshCw, Save, Trash2, Upload, X,
 } from 'lucide-react'
 import {
   BiltenDocument, BILTEN_DOC_CSS, COLS, LOGO_SRC,
-  catLabel, fmtIssued, koef, parseSnapshot, pdfName,
-  type MatchRow, type NumKey, type Row, type Selection, type Snapshot,
+  catLabel, fmtIssued, fmtPeriod, koef, parseSnapshot, pdfName,
+  type MatchKey, type MatchRow, type NumKey, type Row, type Section, type Selection, type Snapshot,
 } from '@/components/bilten/BiltenDocument'
+import KategorijeIzbor, { poRedu } from './KategorijeIzbor'
+import { compareStandings } from '@/lib/standings'
+import { formatSetova } from '@/lib/setovi'
 
 /* ══════════════════════════════════════════
    POMOĆNE FUNKCIJE (samo za admin)
@@ -19,19 +22,29 @@ import {
 let seq = 0
 const uid = () => `r${Date.now().toString(36)}${(seq++).toString(36)}`
 
-const autoOpis = (s: Selection) =>
-  `${catLabel(s.category)} — Sezona ${s.season}${s.kolo ? ` — ${s.kolo}. kolo` : ''}`
+// Poslednji izbor kategorija se pamti u browseru (bilten se obično pravi za iste kategorije)
+const KAT_KEY = 'mosl-bilten-kategorije'
 
-// Isti redosled kao "recalcPositions" u TabelaTab: pobede → bodovi → set koef → poen koef
-function sortStandings(list: any[]) {
-  const r = (w: number, l: number) => (l > 0 ? w / l : w)
-  return [...list].sort((a, b) =>
-    (b.won ?? 0) - (a.won ?? 0) ||
-    (b.points ?? 0) - (a.points ?? 0) ||
-    r(b.sets_won ?? 0, b.sets_lost ?? 0) - r(a.sets_won ?? 0, a.sets_lost ?? 0) ||
-    r(b.points_won ?? 0, b.points_lost ?? 0) - r(a.points_won ?? 0, a.points_lost ?? 0) ||
-    (a.position ?? 999) - (b.position ?? 999))
-}
+const pad = (n: number) => String(n).padStart(2, '0')
+const isoDan = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+const reciKategorija = (n: number) => (n >= 2 && n <= 4 ? 'kategorije' : 'kategorija')
+
+// Opis biltena u listi, npr. "Seniori, Kadeti — Sezona 2026/2027 — 01.11.–07.11.2026."
+const autoOpis = (s: Selection) => [
+  s.categories.length <= 3 ? s.categories.map(catLabel).join(', ') : `${s.categories.length} ${reciKategorija(s.categories.length)}`,
+  `Sezona ${s.season}`,
+  s.kolo ? `${s.kolo}. kolo` : '',
+  fmtPeriod(s.dateFrom, s.dateTo),
+].filter(Boolean).join(' — ')
+
+// Ključ izbora — kad se razlikuje od učitanog, podaci u editoru su zastareli
+const selKey = (s: Selection, saPraznim: boolean) =>
+  JSON.stringify([poRedu(s.categories), s.season, s.kolo.trim(), s.dateFrom, s.dateTo, saPraznim])
+
+// Isti redosled kao u TABELA: pobede → bodovi → set koef → poen koef
+const sortStandings = (list: any[]) =>
+  [...list].sort((a, b) => compareStandings(a, b) || (a.position ?? 999) - (b.position ?? 999))
 
 const toRow = (s: any): Row => ({
   uid: uid(),
@@ -49,7 +62,13 @@ const toMatchRow = (m: any): MatchRow => ({
   away: m.away_team?.name ?? '—',
   home_sets: m.home_sets != null ? String(m.home_sets) : '',
   away_sets: m.away_sets != null ? String(m.away_sets) : '',
+  sets: formatSetova(m.set_scores),
 })
+
+const poKoluIDatumu = (a: any, b: any) =>
+  (Number(a.round) || 0) - (Number(b.round) || 0) ||
+  String(a.match_date ?? '').localeCompare(String(b.match_date ?? '')) ||
+  String(a.match_time ?? '').localeCompare(String(b.match_time ?? ''))
 
 function explainError(e: any) {
   const m = String(e?.message ?? e ?? '')
@@ -76,6 +95,8 @@ async function logoReady() {
   try { await Promise.race([img.decode(), new Promise(r => setTimeout(r, 1000))]) } catch {}
 }
 
+type Msg = { kind: 'ok' | 'err' | 'info'; text: string }
+
 /* ══════════════════════════════════════════
    BILTENI TAB
 ══════════════════════════════════════════ */
@@ -86,14 +107,21 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
   const [loading, setLoading] = useState(true)
   const [listError, setListError] = useState('')
 
-  // Generator
+  // Generator — izbor
   const [genOpen, setGenOpen] = useState(false)
-  const [category, setCategory] = useState<string>(CATEGORIES[0].value)
+  const [categories, setCategories] = useState<string[]>([])
   const [season, setSeason] = useState<string>(aktivnaSezona || SEASONS[0])
   const [kolo, setKolo] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [saPraznim, setSaPraznim] = useState(false)
+
+  // Generator — učitani podaci
   const [loadedFor, setLoadedFor] = useState<Selection | null>(null)
-  const [rows, setRows] = useState<Row[]>([])
-  const [matches, setMatches] = useState<MatchRow[]>([])
+  const [loadedKey, setLoadedKey] = useState('')
+  const [sections, setSections] = useState<Section[]>([])
+  const [otvorene, setOtvorene] = useState<Record<string, boolean>>({})
+  const [newPage, setNewPage] = useState(false)
   const [title, setTitle] = useState('')
   const [opis, setOpis] = useState('')
   const [note, setNote] = useState('')
@@ -102,7 +130,7 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
   const [dirty, setDirty] = useState(false)
   const [loadingData, setLoadingData] = useState(false)
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [msg, setMsg] = useState<Msg | null>(null)
 
   // Upload gotovog PDF-a
   const [upOpen, setUpOpen] = useState(false)
@@ -116,6 +144,10 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
   useEffect(() => {
     setMounted(true)
     new Image().src = LOGO_SRC // učitaj logo unapred, da bude spreman za štampu
+    try {
+      const v = JSON.parse(localStorage.getItem(KAT_KEY) || '[]')
+      if (Array.isArray(v)) setCategories(poRedu(v.filter((x: unknown) => typeof x === 'string')))
+    } catch {}
   }, [])
   useEffect(() => { fetchBilteni() }, [])
   useEffect(() => { if (aktivnaSezona && !loadedFor) setSeason(aktivnaSezona) }, [aktivnaSezona])
@@ -127,10 +159,29 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
     setLoading(false)
   }
 
-  /* ── generator ── */
+  /* ── generator: izbor ── */
+
+  function changeCategories(v: string[]) {
+    setCategories(v)
+    try { localStorage.setItem(KAT_KEY, JSON.stringify(v)) } catch {}
+  }
+
+  // "7 dana": od izabranog datuma Od sedam dana unapred; bez Od — poslednjih 7 dana (do danas)
+  function sedamDana() {
+    if (dateFrom) {
+      const d = new Date(`${dateFrom}T00:00:00`)
+      d.setDate(d.getDate() + 6)
+      setDateTo(isoDan(d))
+    } else {
+      const danas = new Date()
+      const od = new Date()
+      od.setDate(danas.getDate() - 6)
+      setDateFrom(isoDan(od)); setDateTo(isoDan(danas))
+    }
+  }
 
   function resetEditor() {
-    setRows([]); setMatches([]); setLoadedFor(null)
+    setSections([]); setLoadedFor(null); setLoadedKey(''); setOtvorene({}); setNewPage(false)
     setTitle(''); setOpis(''); setNote(''); setIssued('')
     setCurrentId(null); setDirty(false); setMsg(null)
   }
@@ -148,90 +199,150 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
   }
 
   async function loadData() {
+    if (!categories.length) { setMsg({ kind: 'err', text: 'Označi bar jednu kategoriju.' }); return }
+    if (dateFrom && dateTo && dateFrom > dateTo) { setMsg({ kind: 'err', text: 'Datum „Od“ je posle datuma „Do“.' }); return }
     if (dirty && !confirm('Učitavanje iz baze zameniće podatke koje si ručno izmenio. Nastaviti?')) return
     setLoadingData(true); setMsg(null)
     const k = kolo.trim()
-    const [s, m] = await Promise.all([
-      supabase.from('standings')
-        .select('*, team:teams(name)')
-        .eq('category', category).eq('season', season),
-      supabase.from('matches')
+    const cats = poRedu(categories)
+
+    // Utakmice se učitavaju posebno za svaku kategoriju (bez rizika od limita od 1000 redova)
+    const utakmice = (c: string) => {
+      let q = supabase.from('matches')
         .select('*, home_team:teams!matches_home_team_id_fkey(name), away_team:teams!matches_away_team_id_fkey(name)')
-        .eq('category', category).eq('season', season).eq('status', 'finished')
-        .order('match_date', { ascending: true }),
+        .eq('category', c).eq('season', season).eq('status', 'finished')
+      if (dateFrom) q = q.gte('match_date', dateFrom)
+      if (dateTo) q = q.lte('match_date', dateTo)
+      return q.order('match_date', { ascending: true })
+    }
+    const [s, ...ms] = await Promise.all([
+      supabase.from('standings').select('*, team:teams(name)').eq('season', season).in('category', cats),
+      ...cats.map(utakmice),
     ])
     setLoadingData(false)
-    if (s.error || m.error) {
-      setMsg({ ok: false, text: 'Greška pri učitavanju: ' + (s.error ?? m.error).message })
-      return
-    }
-    let ms: any[] = m.data ?? []
-    if (k) ms = ms.filter(x => String(x.round ?? '').trim() === k)
-    ms = [...ms].sort((a, b) =>
-      (Number(a.round) || 0) - (Number(b.round) || 0) ||
-      String(a.match_date ?? '').localeCompare(String(b.match_date ?? '')))
+    const err = s.error ?? ms.find((r: any) => r.error)?.error
+    if (err) { setMsg({ kind: 'err', text: 'Greška pri učitavanju: ' + err.message }); return }
 
-    const newRows = sortStandings(s.data ?? []).map(toRow)
-    setRows(newRows)
-    setMatches(ms.map(toMatchRow))
-    setLoadedFor({ category, season, kolo: k })
+    const filtrirano = !!(k || dateFrom || dateTo)
+    const secs: Section[] = []
+    const preskocene: string[] = []
+    cats.forEach((c, i) => {
+      const st = (s.data ?? []).filter((x: any) => x.category === c)
+      let mm: any[] = ms[i].data ?? []
+      if (k) mm = mm.filter(x => String(x.round ?? '').trim() === k)
+      mm = [...mm].sort(poKoluIDatumu)
+      if ((!st.length && !mm.length) || (filtrirano && !mm.length && !saPraznim)) {
+        preskocene.push(catLabel(c))
+        return
+      }
+      secs.push({ uid: uid(), category: c, standings: sortStandings(st).map(toRow), matches: mm.map(toMatchRow) })
+    })
+
+    const sel: Selection = { categories: cats, season, kolo: k, dateFrom, dateTo }
+    setSections(secs)
+    setOtvorene({})
+    setLoadedFor(sel)
+    setLoadedKey(selKey(sel, saPraznim))
     setDirty(false)
-    if (!newRows.length && !ms.length)
-      setMsg({ ok: false, text: `Nema podataka za ${catLabel(category)}, sezona ${season}${k ? `, ${k}. kolo` : ''}.` })
+    const filter = [k ? `${k}. kolo` : '', fmtPeriod(dateFrom, dateTo)].filter(Boolean).join(', ')
+    if (!secs.length)
+      setMsg({ kind: 'err', text: `Nema podataka za izabrane kategorije (sezona ${season}${filter ? `, ${filter}` : ''}).` })
+    else if (preskocene.length)
+      setMsg({ kind: 'info', text: `Preskočeno (${filtrirano ? 'nema utakmica u izabranom kolu/periodu' : 'nema podataka'}): ${preskocene.join(', ')}.` })
   }
 
-  function setRowVal(i: number, key: NumKey | 'team', val: string) {
-    setRows(rs => rs.map((r, j) => j !== i ? r
-      : { ...r, [key]: key === 'team' ? val : Math.max(0, parseInt(val, 10) || 0) }))
+  /* ── generator: izmene po kategorijama ── */
+
+  function updSection(si: number, fn: (s: Section) => Section) {
+    setSections(ss => ss.map((s, j) => (j === si ? fn(s) : s)))
     setDirty(true)
   }
 
-  function moveRow(i: number, d: -1 | 1) {
-    setRows(rs => {
+  function setRowVal(si: number, i: number, key: NumKey | 'team', val: string) {
+    updSection(si, s => ({
+      ...s,
+      standings: s.standings.map((r, j) => j !== i ? r
+        : { ...r, [key]: key === 'team' ? val : Math.max(0, parseInt(val, 10) || 0) }),
+    }))
+  }
+
+  function moveRow(si: number, i: number, d: -1 | 1) {
+    updSection(si, s => {
       const j = i + d
-      if (j < 0 || j >= rs.length) return rs
-      const c = [...rs]
+      if (j < 0 || j >= s.standings.length) return s
+      const c = [...s.standings]
       const t = c[i]; c[i] = c[j]; c[j] = t
+      return { ...s, standings: c }
+    })
+  }
+
+  function removeRow(si: number, i: number) {
+    updSection(si, s => ({ ...s, standings: s.standings.filter((_, j) => j !== i) }))
+  }
+
+  function setMatchVal(si: number, i: number, key: MatchKey, val: string) {
+    updSection(si, s => ({ ...s, matches: s.matches.map((m, j) => (j === i ? { ...m, [key]: val } : m)) }))
+  }
+
+  function removeMatch(si: number, i: number) {
+    updSection(si, s => ({ ...s, matches: s.matches.filter((_, j) => j !== i) }))
+  }
+
+  function moveSection(si: number, d: -1 | 1) {
+    setSections(ss => {
+      const j = si + d
+      if (j < 0 || j >= ss.length) return ss
+      const c = [...ss]
+      const t = c[si]; c[si] = c[j]; c[j] = t
       return c
     })
     setDirty(true)
   }
 
-  function removeRow(i: number) { setRows(rs => rs.filter((_, j) => j !== i)); setDirty(true) }
-
-  function setMatchVal(i: number, key: Exclude<keyof MatchRow, 'uid'>, val: string) {
-    setMatches(ms => ms.map((m, j) => (j === i ? { ...m, [key]: val } : m)))
+  function removeSection(si: number) {
+    const sec = sections[si]
+    if (!sec || !confirm(`Izbaciti kategoriju ${catLabel(sec.category)} iz biltena?`)) return
+    setSections(ss => ss.filter((_, j) => j !== si))
     setDirty(true)
   }
 
-  function removeMatch(i: number) { setMatches(ms => ms.filter((_, j) => j !== i)); setDirty(true) }
+  function sveOtvorene(v: boolean) {
+    setOtvorene(Object.fromEntries(sections.map(s => [s.uid, v])))
+  }
+
+  /* ── čuvanje i štampa ── */
 
   function currentSnapshot(): Snapshot | null {
     if (!loadedFor) return null
     return {
-      v: 1, ...loadedFor,
+      v: 2,
+      season: loadedFor.season, kolo: loadedFor.kolo,
+      dateFrom: loadedFor.dateFrom, dateTo: loadedFor.dateTo,
       title: title.trim(), note: note.trim(),
       issued: issued || new Date().toISOString(),
-      standings: rows, matches,
+      newPage: newPage && sections.length > 1,
+      sections,
     }
   }
 
   async function save(): Promise<Snapshot | null> {
     const snap = currentSnapshot()
-    if (!snap) return null
-    if (!snap.title) { setMsg({ ok: false, text: 'Unesi naziv biltena (npr. Bilten br. 3).' }); return null }
+    if (!snap || !loadedFor) return null
+    if (!snap.title) { setMsg({ kind: 'err', text: 'Unesi naziv biltena (npr. Bilten br. 3).' }); return null }
+    if (!snap.sections.length) { setMsg({ kind: 'err', text: 'Bilten nema nijednu kategoriju — učitaj podatke ponovo.' }); return null }
     setBusy(true); setMsg(null)
-    const payload = { naziv: snap.title, opis: opis.trim() || autoOpis(snap), meta: JSON.stringify(snap) }
+    const opisAuto = autoOpis({ ...loadedFor, categories: snap.sections.map(s => s.category) })
+    const payload = { naziv: snap.title, opis: opis.trim() || opisAuto, meta: JSON.stringify(snap) }
     const res = currentId
       ? await supabase.from('bilteni').update(payload).eq('id', currentId).select('id').single()
       : await supabase.from('bilteni').insert([payload]).select('id').single()
     setBusy(false)
-    if (res.error) { setMsg({ ok: false, text: explainError(res.error) }); return null }
+    if (res.error) { setMsg({ kind: 'err', text: explainError(res.error) }); return null }
     const wasUpdate = !!currentId
     setCurrentId(res.data.id)
     setIssued(snap.issued)
     setDirty(false)
-    setMsg({ ok: true, text: wasUpdate ? '✓ Izmene su sačuvane i vide se na sajtu.' : '✓ Bilten je sačuvan i objavljen na sajtu.' })
+    setMsg({ kind: 'ok', text: wasUpdate ? '✓ Izmene su sačuvane i vide se na sajtu.' : '✓ Bilten je sačuvan i objavljen na sajtu.' })
     fetchBilteni()
     return snap
   }
@@ -262,11 +373,22 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
     const snap = parseSnapshot(b.meta)
     if (!snap) return
     if (genOpen && dirty && b.id !== currentId && !confirm('Imaš nesačuvane izmene u biltenu. Odbaciti ih?')) return
-    const sel = { category: snap.category, season: snap.season, kolo: snap.kolo ?? '' }
-    setCategory(sel.category); setSeason(sel.season); setKolo(sel.kolo)
-    setLoadedFor(sel)
-    setRows(snap.standings.map(r => ({ ...r, uid: r.uid || uid() })))
-    setMatches(snap.matches.map(m => ({ ...m, uid: m.uid || uid() })))
+    const cats = poRedu(Array.from(new Set(snap.sections.map(s => s.category).filter(Boolean))))
+    const sel: Selection = {
+      categories: cats, season: snap.season || season,
+      kolo: snap.kolo, dateFrom: snap.dateFrom, dateTo: snap.dateTo,
+    }
+    setCategories(cats); setSeason(sel.season); setKolo(sel.kolo)
+    setDateFrom(sel.dateFrom); setDateTo(sel.dateTo); setSaPraznim(false)
+    setLoadedFor(sel); setLoadedKey(selKey(sel, false))
+    setSections(snap.sections.map(s => ({
+      ...s,
+      uid: s.uid || uid(),
+      standings: s.standings.map(r => ({ ...r, uid: r.uid || uid() })),
+      matches: s.matches.map(m => ({ ...m, uid: m.uid || uid(), sets: m.sets ?? '' })),
+    })))
+    setOtvorene({})
+    setNewPage(snap.newPage)
     setTitle(snap.title || b.naziv || '')
     setOpis(b.opis ?? '')
     setNote(snap.note ?? '')
@@ -317,13 +439,159 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
 
   /* ── render ── */
 
-  const stale = !!loadedFor &&
-    (loadedFor.category !== category || loadedFor.season !== season || loadedFor.kolo !== kolo.trim())
+  const filterAktivan = !!(kolo.trim() || dateFrom || dateTo)
+  const stale = !!loadedFor && loadedKey !== selKey({ categories, season, kolo, dateFrom, dateTo }, saPraznim)
+  const naslovRezultata = loadedFor
+    ? (loadedFor.kolo ? `${loadedFor.kolo}. KOLO` : fmtPeriod(loadedFor.dateFrom, loadedFor.dateTo) || 'SVA KOLA')
+    : ''
 
   const cellNum = 'w-14 bg-[#003f8a]/40 border border-white/10 rounded text-center text-white text-xs px-1 py-1 focus:outline-none focus:border-[#f5c518]'
   const cellText = 'w-full min-w-[140px] bg-[#003f8a]/40 border border-white/10 rounded text-white text-xs px-2 py-1 focus:outline-none focus:border-[#f5c518]'
   const iconBtn = 'p-1 rounded text-blue-400 hover:text-[#f5c518] hover:bg-white/5 disabled:opacity-25 disabled:pointer-events-none'
   const pdfBtn = 'flex items-center gap-1.5 bg-[#f5c518]/10 hover:bg-[#f5c518]/20 border border-[#f5c518]/30 text-[#f5c518] px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors'
+  const msgCls = {
+    ok: 'text-green-300 border-green-500/30 bg-green-500/10',
+    err: 'text-red-300 border-red-500/30 bg-red-500/10',
+    info: 'text-blue-200 border-blue-400/30 bg-blue-400/10',
+  }
+
+  function renderSection(sec: Section, si: number) {
+    const otvorena = otvorene[sec.uid] ?? sections.length <= 2
+    return (
+      <div key={sec.uid} className="mb-4 rounded-xl border border-white/10 overflow-hidden">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[#002d63]/70">
+          <button type="button" onClick={() => setOtvorene(o => ({ ...o, [sec.uid]: !otvorena }))}
+            className="flex items-center gap-2 min-w-0 text-left" title={otvorena ? 'Sakrij' : 'Prikaži i uredi'}>
+            <ChevronDown className={`w-4 h-4 shrink-0 text-blue-300 transition-transform ${otvorena ? '' : '-rotate-90'}`} />
+            <span className="font-display text-lg text-[#f5c518] tracking-wider truncate">{catLabel(sec.category).toUpperCase()}</span>
+            <span className="text-xs text-blue-400 whitespace-nowrap">Tabela: {sec.standings.length} · Rezultati: {sec.matches.length}</span>
+          </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button onClick={() => moveSection(si, -1)} disabled={si === 0} className={iconBtn} title="Pomeri kategoriju gore">
+              <ArrowUp className="w-4 h-4" />
+            </button>
+            <button onClick={() => moveSection(si, 1)} disabled={si === sections.length - 1} className={iconBtn} title="Pomeri kategoriju dole">
+              <ArrowDown className="w-4 h-4" />
+            </button>
+            <button onClick={() => removeSection(si)} className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-white/5" title="Izbaci kategoriju iz biltena">
+              <Trash2 className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {otvorena && (
+          <div className="p-3">
+            {/* Tabela */}
+            <h4 className="font-display text-base text-[#f5c518] tracking-wider">TABELA</h4>
+            <p className="text-xs text-blue-400 mb-2">
+              Brojeve i nazive možeš da ispraviš. Strelicama menjaš redosled — pozicija se računa po redu.
+            </p>
+            <div className="overflow-x-auto mb-5 rounded-xl border border-white/10">
+              <table className="w-full min-w-[980px] text-xs">
+                <thead>
+                  <tr className="bg-[#002d63]/80">
+                    <th className="px-2 py-2 text-blue-300 font-bold text-center w-10">Poz</th>
+                    <th className="px-2 py-2 text-blue-300 font-bold text-left">Naziv kluba</th>
+                    {COLS.map(c => (
+                      <th key={c.label} className="px-1 py-2 text-blue-300 font-bold text-center whitespace-nowrap">{c.label}</th>
+                    ))}
+                    <th className="w-24" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.standings.length === 0 && (
+                    <tr><td colSpan={13} className="px-4 py-6 text-center text-blue-500">Nema timova u tabeli za ovu kategoriju i sezonu.</td></tr>
+                  )}
+                  {sec.standings.map((r, i) => (
+                    <tr key={r.uid} className="border-t border-white/5">
+                      <td className="px-2 py-1.5 text-center font-display text-base text-[#f5c518]">{i + 1}</td>
+                      <td className="px-1 py-1">
+                        <input className={cellText} value={r.team} onChange={e => setRowVal(si, i, 'team', e.target.value)} />
+                      </td>
+                      {COLS.map(c => (
+                        <td key={c.label} className="px-1 py-1 text-center">
+                          {c.kind === 'num'
+                            ? <input type="number" min="0" className={cellNum} value={r[c.key]}
+                                onChange={e => setRowVal(si, i, c.key, e.target.value)} />
+                            : <span className="text-blue-300 whitespace-nowrap">{koef(r[c.plus], r[c.minus])}</span>}
+                        </td>
+                      ))}
+                      <td className="px-1 py-1">
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button onClick={() => moveRow(si, i, -1)} disabled={i === 0} className={iconBtn} title="Pomeri gore">
+                            <ArrowUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => moveRow(si, i, 1)} disabled={i === sec.standings.length - 1} className={iconBtn} title="Pomeri dole">
+                            <ArrowDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button onClick={() => removeRow(si, i)} className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-white/5" title="Izbaci iz biltena">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Rezultati */}
+            <h4 className="font-display text-base text-[#f5c518] tracking-wider mb-2">REZULTATI — {naslovRezultata}</h4>
+            <div className="overflow-x-auto rounded-xl border border-white/10">
+              <table className="w-full min-w-[900px] text-xs">
+                <thead>
+                  <tr className="bg-[#002d63]/80">
+                    {['Kolo', 'Datum', 'Domaćin', 'Rezultat', 'Gost', 'Po setovima', ''].map(h => (
+                      <th key={h} className="px-2 py-2 text-blue-300 font-bold text-left">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sec.matches.length === 0 && (
+                    <tr><td colSpan={7} className="px-4 py-6 text-center text-blue-500">Nema završenih utakmica — rezultati se neće štampati.</td></tr>
+                  )}
+                  {sec.matches.map((m, i) => (
+                    <tr key={m.uid} className="border-t border-white/5">
+                      <td className="px-1 py-1">
+                        <input className={`${cellNum} !w-12`} value={m.round} onChange={e => setMatchVal(si, i, 'round', e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input type="date" className={`${cellText} !min-w-[130px]`} value={m.date} onChange={e => setMatchVal(si, i, 'date', e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input className={cellText} value={m.home} onChange={e => setMatchVal(si, i, 'home', e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <div className="flex items-center justify-center gap-1">
+                          <input type="number" min="0" max="3" className={`${cellNum} !w-11`} value={m.home_sets}
+                            onChange={e => setMatchVal(si, i, 'home_sets', e.target.value)} />
+                          <span className="text-[#f5c518] font-bold">:</span>
+                          <input type="number" min="0" max="3" className={`${cellNum} !w-11`} value={m.away_sets}
+                            onChange={e => setMatchVal(si, i, 'away_sets', e.target.value)} />
+                        </div>
+                      </td>
+                      <td className="px-1 py-1">
+                        <input className={cellText} value={m.away} onChange={e => setMatchVal(si, i, 'away', e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1">
+                        <input className={`${cellText} !min-w-[170px]`} placeholder="nije upisano" value={m.sets ?? ''}
+                          onChange={e => setMatchVal(si, i, 'sets', e.target.value)} />
+                      </td>
+                      <td className="px-1 py-1 text-right">
+                        <button onClick={() => removeMatch(si, i)} className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-white/5" title="Izbaci iz biltena">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -390,13 +658,14 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
             </button>
           </div>
 
+          {/* 1. Kategorije */}
+          <div className="mb-5">
+            <label className="label">Kategorije u biltenu *</label>
+            <KategorijeIzbor value={categories} onChange={changeCategories} />
+          </div>
+
+          {/* 2. Sezona, kolo, period */}
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div>
-              <label className="label">Kategorija</label>
-              <select className="field-input" value={category} onChange={e => setCategory(e.target.value)}>
-                {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
             <div>
               <label className="label">Sezona</label>
               <select className="field-input" value={season} onChange={e => setSeason(e.target.value)}>
@@ -408,17 +677,45 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
               <input type="number" min="1" className="field-input" placeholder="npr. 3"
                 value={kolo} onChange={e => setKolo(e.target.value)} />
             </div>
-            <div className="flex items-end">
-              <button onClick={loadData} disabled={loadingData} className="btn-yellow w-full justify-center">
-                <RefreshCw className={`w-4 h-4 ${loadingData ? 'animate-spin' : ''}`} />
-                {loadingData ? 'UČITAVANJE...' : 'UČITAJ PODATKE'}
-              </button>
+            <div className="sm:col-span-2">
+              <label className="label">Odigrano od – do (prazno = cela sezona)</label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input type="date" className="field-input !w-auto flex-1 min-w-[150px]" value={dateFrom}
+                  onChange={e => setDateFrom(e.target.value)} aria-label="Od datuma" />
+                <span className="text-blue-400">–</span>
+                <input type="date" className="field-input !w-auto flex-1 min-w-[150px]" value={dateTo}
+                  onChange={e => setDateTo(e.target.value)} aria-label="Do datuma" />
+                <button type="button" onClick={sedamDana} className="btn-ghost !px-3 !py-2 !text-xs"
+                  title="Od izabranog datuma 7 dana unapred (bez datuma Od: poslednjih 7 dana)">
+                  7 dana
+                </button>
+                {(dateFrom || dateTo) && (
+                  <button type="button" onClick={() => { setDateFrom(''); setDateTo('') }}
+                    className="text-xs text-blue-400 hover:text-red-300 px-1">Očisti</button>
+                )}
+              </div>
             </div>
+          </div>
+
+          {filterAktivan && (
+            <label className="mt-4 flex items-center gap-2 text-sm text-blue-300 cursor-pointer select-none">
+              <input type="checkbox" className="w-4 h-4 accent-[#f5c518]" checked={saPraznim}
+                onChange={e => setSaPraznim(e.target.checked)} />
+              Uključi i kategorije bez utakmica u izabranom kolu/periodu (samo tabela)
+            </label>
+          )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <button onClick={loadData} disabled={loadingData || !categories.length} className="btn-yellow">
+              <RefreshCw className={`w-4 h-4 ${loadingData ? 'animate-spin' : ''}`} />
+              {loadingData ? 'UČITAVANJE...' : 'UČITAJ PODATKE'}
+            </button>
+            {!categories.length && <span className="text-xs text-blue-400">Označi bar jednu kategoriju.</span>}
           </div>
 
           {stale && (
             <p className="mt-3 text-xs text-amber-300">
-              Promenio si kategoriju, sezonu ili kolo — klikni UČITAJ PODATKE da bi bilten dobio nove podatke.
+              Promenio si kategorije, sezonu, kolo ili period — klikni UČITAJ PODATKE da bi bilten dobio nove podatke.
             </p>
           )}
 
@@ -432,117 +729,33 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
                 </div>
                 <div>
                   <label className="label">Opis (opciono)</label>
-                  <input className="field-input" placeholder={autoOpis(loadedFor)}
+                  <input className="field-input"
+                    placeholder={autoOpis({ ...loadedFor, categories: sections.map(s => s.category) })}
                     value={opis} onChange={e => { setOpis(e.target.value); setDirty(true) }} />
                 </div>
               </div>
 
-              {/* Tabela */}
-              <h4 className="font-display text-lg text-[#f5c518] tracking-wider">
-                {catLabel(loadedFor.category).toUpperCase()} — TABELA
-              </h4>
-              <p className="text-xs text-blue-400 mb-2">
-                Brojeve i nazive možeš da ispraviš. Strelicama menjaš redosled — pozicija se računa po redu.
-              </p>
-              <div className="overflow-x-auto mb-6 rounded-xl border border-white/10">
-                <table className="w-full min-w-[980px] text-xs">
-                  <thead>
-                    <tr className="bg-[#002d63]/80">
-                      <th className="px-2 py-2 text-blue-300 font-bold text-center w-10">Poz</th>
-                      <th className="px-2 py-2 text-blue-300 font-bold text-left">Naziv kluba</th>
-                      {COLS.map(c => (
-                        <th key={c.label} className="px-1 py-2 text-blue-300 font-bold text-center whitespace-nowrap">{c.label}</th>
-                      ))}
-                      <th className="w-24" />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.length === 0 && (
-                      <tr><td colSpan={13} className="px-4 py-6 text-center text-blue-500">Nema timova u tabeli za ovu kategoriju i sezonu.</td></tr>
-                    )}
-                    {rows.map((r, i) => (
-                      <tr key={r.uid} className="border-t border-white/5">
-                        <td className="px-2 py-1.5 text-center font-display text-base text-[#f5c518]">{i + 1}</td>
-                        <td className="px-1 py-1">
-                          <input className={cellText} value={r.team} onChange={e => setRowVal(i, 'team', e.target.value)} />
-                        </td>
-                        {COLS.map(c => (
-                          <td key={c.label} className="px-1 py-1 text-center">
-                            {c.kind === 'num'
-                              ? <input type="number" min="0" className={cellNum} value={r[c.key]}
-                                  onChange={e => setRowVal(i, c.key, e.target.value)} />
-                              : <span className="text-blue-300 whitespace-nowrap">{koef(r[c.plus], r[c.minus])}</span>}
-                          </td>
-                        ))}
-                        <td className="px-1 py-1">
-                          <div className="flex items-center justify-end gap-0.5">
-                            <button onClick={() => moveRow(i, -1)} disabled={i === 0} className={iconBtn} title="Pomeri gore">
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => moveRow(i, 1)} disabled={i === rows.length - 1} className={iconBtn} title="Pomeri dole">
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button onClick={() => removeRow(i)} className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-white/5" title="Izbaci iz biltena">
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              {/* Kategorije: tabela + rezultati */}
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+                <p className="text-xs text-blue-400">
+                  Kategorija u biltenu: <b className="text-white">{sections.length}</b>. Klikni na naziv da otvoriš tabelu i rezultate.
+                </p>
+                {sections.length > 1 && (
+                  <div className="flex gap-3 text-xs">
+                    <button onClick={() => sveOtvorene(true)} className="text-blue-400 hover:text-[#f5c518]">Otvori sve</button>
+                    <button onClick={() => sveOtvorene(false)} className="text-blue-400 hover:text-[#f5c518]">Zatvori sve</button>
+                  </div>
+                )}
               </div>
+              {sections.map(renderSection)}
 
-              {/* Rezultati */}
-              <h4 className="font-display text-lg text-[#f5c518] tracking-wider mb-2">
-                REZULTATI — {loadedFor.kolo ? `${loadedFor.kolo}. KOLO` : 'SVA KOLA'}
-              </h4>
-              <div className="overflow-x-auto mb-6 rounded-xl border border-white/10">
-                <table className="w-full min-w-[720px] text-xs">
-                  <thead>
-                    <tr className="bg-[#002d63]/80">
-                      {['Kolo', 'Datum', 'Domaćin', 'Rezultat', 'Gost', ''].map(h => (
-                        <th key={h} className="px-2 py-2 text-blue-300 font-bold text-left">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {matches.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-6 text-center text-blue-500">Nema završenih utakmica — rezultati se neće štampati.</td></tr>
-                    )}
-                    {matches.map((m, i) => (
-                      <tr key={m.uid} className="border-t border-white/5">
-                        <td className="px-1 py-1">
-                          <input className={`${cellNum} !w-12`} value={m.round} onChange={e => setMatchVal(i, 'round', e.target.value)} />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input type="date" className={`${cellText} !min-w-[130px]`} value={m.date} onChange={e => setMatchVal(i, 'date', e.target.value)} />
-                        </td>
-                        <td className="px-1 py-1">
-                          <input className={cellText} value={m.home} onChange={e => setMatchVal(i, 'home', e.target.value)} />
-                        </td>
-                        <td className="px-1 py-1">
-                          <div className="flex items-center justify-center gap-1">
-                            <input type="number" min="0" max="3" className={`${cellNum} !w-11`} value={m.home_sets}
-                              onChange={e => setMatchVal(i, 'home_sets', e.target.value)} />
-                            <span className="text-[#f5c518] font-bold">:</span>
-                            <input type="number" min="0" max="3" className={`${cellNum} !w-11`} value={m.away_sets}
-                              onChange={e => setMatchVal(i, 'away_sets', e.target.value)} />
-                          </div>
-                        </td>
-                        <td className="px-1 py-1">
-                          <input className={cellText} value={m.away} onChange={e => setMatchVal(i, 'away', e.target.value)} />
-                        </td>
-                        <td className="px-1 py-1 text-right">
-                          <button onClick={() => removeMatch(i)} className="p-1 rounded text-red-400 hover:text-red-300 hover:bg-white/5" title="Izbaci iz biltena">
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              {sections.length > 1 && (
+                <label className="mb-5 flex items-center gap-2 text-sm text-blue-300 cursor-pointer select-none">
+                  <input type="checkbox" className="w-4 h-4 accent-[#f5c518]" checked={newPage}
+                    onChange={e => { setNewPage(e.target.checked); setDirty(true) }} />
+                  Svaka kategorija počinje na novoj strani
+                </label>
+              )}
 
               <div className="mb-6">
                 <label className="label">Napomena (opciono — štampa se na dnu biltena)</label>
@@ -552,10 +765,10 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
               </div>
 
               <div className="flex gap-2 flex-wrap items-center">
-                <button onClick={saveAndPrint} disabled={busy} className="btn-yellow">
+                <button onClick={saveAndPrint} disabled={busy || !sections.length} className="btn-yellow">
                   <Printer className="w-4 h-4" /> {busy ? 'ČUVANJE...' : 'SAČUVAJ I PREUZMI PDF'}
                 </button>
-                <button onClick={() => { save() }} disabled={busy} className="btn-ghost">
+                <button onClick={() => { save() }} disabled={busy || !sections.length} className="btn-ghost">
                   <Save className="w-4 h-4" /> Samo sačuvaj
                 </button>
                 <button onClick={closeGen} className="btn-ghost">
@@ -569,9 +782,7 @@ export default function BilteniTab({ supabase, isReviewer, aktivnaSezona }: any)
           )}
 
           {msg && (
-            <div className={`mt-4 text-sm rounded-lg px-3 py-2 border ${msg.ok
-              ? 'text-green-300 border-green-500/30 bg-green-500/10'
-              : 'text-red-300 border-red-500/30 bg-red-500/10'}`}>
+            <div className={`mt-4 text-sm rounded-lg px-3 py-2 border ${msgCls[msg.kind]}`}>
               {msg.text}
             </div>
           )}
