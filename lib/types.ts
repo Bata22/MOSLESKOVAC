@@ -6,6 +6,12 @@ export type Category =
 
 export type MatchStatus = 'scheduled' | 'live' | 'finished' | 'postponed'
 
+// Jedan odigran set: poeni domaćina i gosta (npr. 25:20)
+export interface SetScore {
+  home: number
+  away: number
+}
+
 export interface Team {
   id: string
   name: string
@@ -46,6 +52,7 @@ export interface Match {
   away_score?: number
   home_sets?: number
   away_sets?: number
+  set_scores?: SetScore[] | null   // rezultat po setovima (kolona JSONB)
   status: MatchStatus
   round?: string
   redni_broj?: string
